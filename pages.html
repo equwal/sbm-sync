@@ -1,0 +1,126 @@
+{{define "head"}}<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{{if .Title}}{{.Title}} · {{end}}sbm Sync</title>
+<style>
+body { max-width: 36em; margin: 2em auto; padding: 0 1em; font: 16px/1.5 sans-serif; color: #222; background: #fff; }
+a { color: #005577; }
+h1 { font-size: 1.5em; } h2 { font-size: 1.15em; margin-top: 2em; }
+label { display: block; }
+input { display: block; width: 100%; box-sizing: border-box; margin: .2em 0 1em; padding: .4em; font: inherit; }
+button { font: inherit; padding: .4em 1em; margin: .2em .5em .2em 0; }
+.error { color: #a00; } .note, footer { color: #555; } footer { margin-top: 3em; font-size: .9em; }
+@media (prefers-color-scheme: dark) {
+  body { background: #111; color: #ddd; } a { color: #4fb3d9; } .note, footer { color: #999; } .error { color: #f77; }
+}
+</style>
+</head>
+<body>
+<header><a href="/"><b>sbm Sync</b></a></header>
+{{end}}
+
+{{define "foot"}}
+<footer>
+<a href="https://github.com/equwal/sbm-sync">Source code</a> ·
+<a href="/privacy">Privacy</a> ·
+<a href="https://ko-fi.com/truex">Support sbm on Ko-fi</a>
+</footer>
+</body>
+</html>
+{{end}}
+
+{{define "home"}}{{template "head" .}}
+<h1>Your bookmarks, the same everywhere</h1>
+<p><a href="https://github.com/equwal/sbm">sbm</a> keeps your bookmarks in one plain
+text file. sbm Sync keeps that file the same on each of your devices: bm on
+your computers, the sbm app for Android, and the sbm add-on for Firefox and
+Chrome.</p>
+{{if .Billing}}<p>Free for {{.TrialDays}} days. Then {{.Year}} or {{.Month}}. Cancel at any time.</p>{{end}}
+<p>{{if .Email}}<a href="/account">Your account</a>{{else}}<a href="/signup">Create an account</a> or <a href="/login">sign in</a>.{{end}}</p>
+<p class="note">sbm Sync is free software under the AGPL-3.0. You can
+<a href="https://github.com/equwal/sbm-sync">run your own server</a>.</p>
+{{template "foot" .}}{{end}}
+
+{{define "signup"}}{{template "head" .}}
+<h1>Create an account</h1>
+{{with .Error}}<p class="error">{{.}}</p>{{end}}
+<form method="post" action="/signup">
+<label>Email <input type="email" name="email" value="{{.Email}}" required autocomplete="email"></label>
+<label>Password, 8 characters or more <input type="password" name="password" minlength="8" maxlength="72" required autocomplete="new-password"></label>
+<button>Create account</button>
+</form>
+<p class="note">See the <a href="/privacy">privacy policy</a>. You have an account? <a href="/login">Sign in</a>.</p>
+{{template "foot" .}}{{end}}
+
+{{define "login"}}{{template "head" .}}
+<h1>Sign in</h1>
+{{with .Error}}<p class="error">{{.}}</p>{{end}}
+<form method="post" action="/login">
+<label>Email <input type="email" name="email" value="{{.Email}}" required autocomplete="email"></label>
+<label>Password <input type="password" name="password" required autocomplete="current-password"></label>
+<button>Sign in</button>
+</form>
+<p class="note">No account yet? <a href="/signup">Create one</a>.</p>
+{{template "foot" .}}{{end}}
+
+{{define "account"}}{{template "head" .}}
+<h1>Your account</h1>
+<p>Signed in as {{.Email}}.</p>
+{{with .Error}}<p class="error">{{.}}</p>{{end}}
+<p><b>{{.State}}</b></p>
+{{if .CanSubscribe}}<form method="post" action="/account/checkout">
+<button name="plan" value="year">Subscribe: {{.Year}}</button>
+<button name="plan" value="month">Subscribe: {{.Month}}</button>
+</form>{{end}}
+{{if .Customer}}<form method="post" action="/account/portal"><button>Manage billing</button></form>{{end}}
+
+<h2>Connect your devices</h2>
+<p>Sign in with this email and password on each device:</p>
+<ul>
+<li>bm on a computer: run <code>bm-sync login</code></li>
+<li>the sbm app for Android: menu, Sign in to sync</li>
+<li>the sbm add-on for Firefox or Chrome: its options page</li>
+</ul>
+<p>Server: <code>{{.URL}}</code></p>
+<form method="post" action="/logout"><button>Sign out</button></form>
+
+<h2>Delete your account</h2>
+<form method="post" action="/account/delete">
+<p>This deletes your account and the copy of your bookmarks on this server at
+once.{{if .Customer}} It also ends your subscription.{{end}} Your devices keep
+their bookmark files.</p>
+<label>Password <input type="password" name="password" required autocomplete="current-password"></label>
+<button>Delete my account</button>
+</form>
+{{template "foot" .}}{{end}}
+
+{{define "privacy"}}{{template "head" .}}
+<h1>Privacy</h1>
+<p>This policy is for this sbm Sync server, the sbm app for Android and the
+sbm add-on for Firefox and Chrome.</p>
+<h2>What the server keeps, and why</h2>
+<ul>
+<li>Your email address and a bcrypt hash of your password, never the password itself: to sign you in.</li>
+<li>Your bookmark file, the last 50 versions that your devices sent: to sync your devices.</li>
+<li>A hash of the sign-in token of each device: to know your devices.</li>
+<li>When you subscribe: your Stripe customer ID and the state of your subscription: to bill you.</li>
+</ul>
+<p>The server does not sell or share this data, and does not use it for ads.
+There are no analytics and no trackers. The only cookie keeps you signed in.</p>
+<p>Data goes to and from the server over HTTPS. On the server it is not
+encrypted: the operator of the server can read it.</p>
+<h2>Payments</h2>
+<p>Stripe takes the payments. This server never sees your card. See the
+<a href="https://stripe.com/privacy">Stripe privacy policy</a>.</p>
+<h2>Delete your data</h2>
+<p>Delete your account on the <a href="/account">account page</a>. The
+server deletes the account and all versions of your bookmark file at once.</p>
+<h2>The app and the add-on</h2>
+<p>They keep your bookmarks on your device. They send them only to the sync
+server that you sign in to, and only after you sign in. Without an account,
+no data leaves your device.</p>
+{{with .Contact}}<h2>Contact</h2>
+<p><a href="mailto:{{.}}">{{.}}</a></p>{{end}}
+{{template "foot" .}}{{end}}

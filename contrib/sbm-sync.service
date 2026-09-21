@@ -1,0 +1,26 @@
+# systemd unit for sbm-sync. Install:
+#   useradd --system --home-dir /var/lib/sbm-sync --create-home sbm
+#   install -m 755 sbm-sync /usr/local/bin/
+#   install -m 644 contrib/sbm-sync.service /etc/systemd/system/
+#   install -m 640 -g sbm /dev/null /etc/sbm-sync.env   # then edit it
+#   systemctl enable --now sbm-sync
+[Unit]
+Description=sbm Sync server
+After=network.target
+
+[Service]
+User=sbm
+Group=sbm
+EnvironmentFile=/etc/sbm-sync.env
+Environment=SBM_DATA=/var/lib/sbm-sync
+ExecStart=/usr/local/bin/sbm-sync
+Restart=on-failure
+NoNewPrivileges=yes
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+PrivateDevices=yes
+ReadWritePaths=/var/lib/sbm-sync
+
+[Install]
+WantedBy=multi-user.target

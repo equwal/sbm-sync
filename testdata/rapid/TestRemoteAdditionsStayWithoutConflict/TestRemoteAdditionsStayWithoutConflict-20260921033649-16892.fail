@@ -1,0 +1,18 @@
+# 2026/09/21 03:36:49.132391 [TestRemoteAdditionsStayWithoutConflict] [rapid] draw base: []string{"https://suckless.org\tsuckless software\ttools c"}
+# 2026/09/21 03:36:49.132391 [TestRemoteAdditionsStayWithoutConflict] [rapid] draw local: []string{}
+# 2026/09/21 03:36:49.132391 [TestRemoteAdditionsStayWithoutConflict] [rapid] draw remote: []string{"https://suckless.org\tsuckless software\ttools c", ""}
+# 2026/09/21 03:36:49.132391 [TestRemoteAdditionsStayWithoutConflict] line "" that the server added is lost
+# 
+v0.4.8#1060941482528800742
+0x6666666666666
+0x0
+0x1
+0x0
+0x0
+0x6666666666666
+0x0
+0x1
+0x6666666666666
+0x1f2b5a0e61c3a6
+0x0
+0x0

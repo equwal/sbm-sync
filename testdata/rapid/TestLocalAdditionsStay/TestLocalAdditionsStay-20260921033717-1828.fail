@@ -1,0 +1,18 @@
+# 2026/09/21 03:37:17.082965 [TestLocalAdditionsStay] [rapid] draw base: []string{"https://suckless.org/\tsuckless\ttools"}
+# 2026/09/21 03:37:17.082965 [TestLocalAdditionsStay] [rapid] draw local: []string{"https://suckless.org/\tsuckless\ttools", ""}
+# 2026/09/21 03:37:17.082965 [TestLocalAdditionsStay] [rapid] draw remote: []string{}
+# 2026/09/21 03:37:17.082965 [TestLocalAdditionsStay] line "" that local added is lost
+# 
+v0.4.8#16217358014360582265
+0x6666666666666
+0x0
+0x0
+0x0
+0x6666666666666
+0x0
+0x0
+0x6666666666666
+0x9867f1f40f739
+0x9
+0x0
+0x0
