@@ -4,6 +4,13 @@ sbm-sync keeps your [sbm](https://github.com/equwal/sbm) bookmark file the
 same on each of your devices: bm on your computers, the sbm app for Android
 and the sbm add-on for Firefox and Chrome.
 
+![bm adds a page in the terminal; the add-on shows it at once and adds another, which bm then shows](demo/sbm-demo.gif)
+
+The demo (80 seconds, also as [MP4](demo/sbm-demo.mp4)): bm adds a bookmark
+in a terminal. The add-on in the browser shows it, and adds the page that it
+shows. After `bm-sync`, bm has that bookmark too. All through
+sbm.subread.space.
+
 It is one small Go program. It keeps its data in plain files: no database.
 The only dependency is `golang.org/x/crypto` for bcrypt.
 
