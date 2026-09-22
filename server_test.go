@@ -498,14 +498,30 @@ func TestOldVersionsGo(t *testing.T) {
 	}
 }
 
-func TestTeamsPreorderLink(t *testing.T) {
+func TestPaymentLinks(t *testing.T) {
 	e := newEnv(t, false)
-	if strings.Contains(e.body(http.DefaultClient, "/"), "Pre-order") {
-		t.Error("the home page offers teams without SBM_TEAMS_URL")
+	c := e.signup("me@example.org")
+	if home := e.body(c, "/"); strings.Contains(home, "Pre-order") || strings.Contains(home, "supporter") {
+		t.Error("the home page offers something without the settings")
 	}
-	e.s.teams = "https://buy.stripe.com/test_x"
-	if !strings.Contains(e.body(http.DefaultClient, "/"), `<a href="https://buy.stripe.com/test_x">Pre-order`) {
-		t.Error("the home page has no pre-order link")
+	// The link for large teams needs the link for small teams.
+	e.s.teamsLarge = "https://buy.stripe.com/large"
+	if strings.Contains(e.body(c, "/"), "large") {
+		t.Error("the home page links only to large teams")
+	}
+	e.s.teams, e.s.support = "https://buy.stripe.com/small", "https://buy.stripe.com/support"
+	home := e.body(c, "/")
+	for _, want := range []string{
+		`Pre-order the founding plan: <a href="https://buy.stripe.com/small">for up to 10 people</a>`,
+		`<a href="https://buy.stripe.com/large">for 11 people or more</a>`,
+		`<a href="https://buy.stripe.com/support">become a supporter</a>`,
+	} {
+		if !strings.Contains(home, want) {
+			t.Errorf("the home page lacks %q", want)
+		}
+	}
+	if !strings.Contains(e.body(c, "/account"), `<a href="https://buy.stripe.com/support">become a supporter</a>`) {
+		t.Error("the account page has no supporter link")
 	}
 }
 

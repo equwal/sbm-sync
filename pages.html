@@ -38,6 +38,9 @@ button { font: inherit; padding: .4em 1em; margin: .2em .5em .2em 0; }
 </html>
 {{end}}
 
+{{define "support"}}{{with .Support}}<p>sbm Sync is free. To pay for the server and the work on sbm,
+<a href="{{.}}">become a supporter</a>.</p>{{end}}{{end}}
+
 {{define "home"}}{{template "head" .}}
 <h1>Your bookmarks, the same everywhere</h1>
 <p><a href="https://github.com/equwal/sbm">sbm</a> keeps your bookmarks in one plain
@@ -48,8 +51,9 @@ Chrome.</p>
 <p>{{if .Email}}<a href="/account">Your account</a>{{else}}<a href="/signup">Create an account</a> or <a href="/login">sign in</a>.{{end}}</p>
 {{with .Teams}}<h2>Teams</h2>
 <p>Coming: bookmarks for teams. The members of a team share one bookmark
-file, and sync it on each of their devices. <a href="{{.}}">Pre-order the
-founding plan</a>.</p>{{end}}
+file, and sync it on each of their devices. Pre-order the founding plan: <a href="{{.}}">for up to 10 people</a>{{with $.TeamsLarge}},
+or <a href="{{.}}">for 11 people or more</a>{{end}}.</p>{{end}}
+{{template "support" .}}
 <p class="note">sbm Sync is free software under the AGPL-3.0. You can
 <a href="https://github.com/equwal/sbm-sync">run your own server</a>.</p>
 {{template "foot" .}}{{end}}
@@ -89,6 +93,7 @@ email that this server sent to {{.Email}}. Sync starts after that.</p>
 <button name="plan" value="month">Subscribe: {{.Month}}</button>
 </form>{{end}}
 {{if .Customer}}<form method="post" action="/account/portal"><button>Manage billing</button></form>{{end}}
+{{template "support" .}}
 
 <h2>Connect your devices</h2>
 <p>Sign in with this email and password on each device:</p>

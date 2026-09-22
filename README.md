@@ -99,8 +99,11 @@ All settings come from the environment. With Docker, put them in `.env`.
     SBM_ADDR        address to listen on (default 127.0.0.1:8750)
     SBM_DATA        data directory (default ./data)
     SBM_CONTACT     email address on the privacy page (optional)
-    SBM_TEAMS_URL   page that pre-sells team bookmarks (optional): the
-                    home page links to it
+    SBM_TEAMS_URL   page that pre-sells team bookmarks for up to 10
+                    people (optional): the home page links to it
+    SBM_TEAMS_LARGE_URL  the same for teams of 11 people or more
+    SBM_SUPPORT_URL page of a supporter subscription (optional): the home
+                    page and the account page link to it
     SBM_TRIAL_DAYS  days of sync before payment, with billing on (default 30)
     SBM_BILLING_START  date when billing starts, as 2026-10-01: accounts
                     from before it get the full trial from that date

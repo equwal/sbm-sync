@@ -41,10 +41,12 @@ type server struct {
 	trial   time.Duration
 	since   time.Time // start of billing: no trial ends before since + trial
 	contact string
-	teams   string            // address of the page that pre-sells team bookmarks, or ""
-	prices  map[string]string // plan ("month", "year"): Stripe price ID
-	labels  map[string]string // plan: price as text
-	limit   limiter
+	// Payment pages, or "": the pre-order of team bookmarks for up to 10
+	// people, the same for 11 people or more, and a supporter subscription.
+	teams, teamsLarge, support string
+	prices                     map[string]string // plan ("month", "year"): Stripe price ID
+	labels                     map[string]string // plan: price as text
+	limit                      limiter
 	// mail sends an email. It is nil when the server has no SMTP server:
 	// then accounts need no email check.
 	mail func(to, subject, body string) error
@@ -66,25 +68,23 @@ func main() {
 			log.Fatalf("SBM_BILLING_START: %v", err)
 		}
 	}
-	teams := os.Getenv("SBM_TEAMS_URL")
-	if t, err := url.Parse(teams); teams != "" && (err != nil || t.Host == "" || (t.Scheme != "https" && t.Scheme != "http")) {
-		log.Fatalf("SBM_TEAMS_URL: not an address: %q", teams)
-	}
 	store, err := openStore(env("SBM_DATA", "data"))
 	if err != nil {
 		log.Fatal(err)
 	}
 	s := &server{
-		store:   store,
-		site:    site,
-		origin:  u.Scheme + "://" + u.Host,
-		secure:  u.Scheme == "https",
-		trial:   time.Duration(days) * 24 * time.Hour,
-		since:   since,
-		contact: os.Getenv("SBM_CONTACT"),
-		teams:   teams,
-		prices:  map[string]string{"month": os.Getenv("STRIPE_PRICE_MONTH"), "year": os.Getenv("STRIPE_PRICE_YEAR")},
-		labels:  map[string]string{"month": "monthly", "year": "yearly"},
+		store:      store,
+		site:       site,
+		origin:     u.Scheme + "://" + u.Host,
+		secure:     u.Scheme == "https",
+		trial:      time.Duration(days) * 24 * time.Hour,
+		since:      since,
+		contact:    os.Getenv("SBM_CONTACT"),
+		teams:      link("SBM_TEAMS_URL"),
+		teamsLarge: link("SBM_TEAMS_LARGE_URL"),
+		support:    link("SBM_SUPPORT_URL"),
+		prices:     map[string]string{"month": os.Getenv("STRIPE_PRICE_MONTH"), "year": os.Getenv("STRIPE_PRICE_YEAR")},
+		labels:     map[string]string{"month": "monthly", "year": "yearly"},
 	}
 	if key := os.Getenv("STRIPE_SECRET_KEY"); key != "" {
 		for _, v := range []string{"STRIPE_WEBHOOK_SECRET", "STRIPE_PRICE_MONTH", "STRIPE_PRICE_YEAR"} {
@@ -134,6 +134,16 @@ func env(name, fallback string) string {
 	return fallback
 }
 
+// link gives the address in the environment variable name, or "". The
+// server does not start when the value is not an http or https address.
+func link(name string) string {
+	v := os.Getenv(name)
+	if u, err := url.Parse(v); v != "" && (err != nil || u.Host == "" || (u.Scheme != "https" && u.Scheme != "http")) {
+		log.Fatalf("%s: not an address: %q", name, v)
+	}
+	return v
+}
+
 func (s *server) routes() http.Handler {
 	m := http.NewServeMux()
 	m.HandleFunc("GET /{$}", s.home)
@@ -171,7 +181,7 @@ func (s *server) routes() http.Handler {
 
 type page struct {
 	Title, Error, Email, State, URL, Contact string
-	Teams                                    string // address of the pre-order page
+	Teams, TeamsLarge, Support               string // addresses of payment pages
 	Month, Year                              string
 	TrialDays                                int
 	Billing, CanSubscribe, Unconfirmed       bool
@@ -179,7 +189,8 @@ type page struct {
 }
 
 func (s *server) page(title string) page {
-	return page{Title: title, URL: s.site, Contact: s.contact, Teams: s.teams, Billing: s.stripe != nil,
+	return page{Title: title, URL: s.site, Contact: s.contact, Billing: s.stripe != nil,
+		Teams: s.teams, TeamsLarge: s.teamsLarge, Support: s.support,
 		Month: s.labels["month"], Year: s.labels["year"], TrialDays: int(s.trial.Hours() / 24)}
 }
 
