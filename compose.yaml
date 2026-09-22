@@ -1,0 +1,36 @@
+# sbm-sync behind Caddy. Caddy gets and renews the TLS certificate for
+# SBM_DOMAIN by itself. Copy .env.example to .env, set SBM_DOMAIN in it,
+# then run: docker compose up -d
+services:
+  caddy:
+    image: caddy:2
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+      - "443:443/udp"
+    environment:
+      SBM_DOMAIN: ${SBM_DOMAIN:?set SBM_DOMAIN in .env}
+    volumes:
+      - ./contrib/Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy-data:/data
+      - caddy-config:/config
+
+  sbm-sync:
+    build: .
+    restart: unless-stopped
+    # sbm-sync uses the network of caddy. Caddy connects to it on
+    # 127.0.0.1, and sbm-sync trusts X-Real-IP only from 127.0.0.1. So the
+    # sign-in limits count the address of each client, not of Caddy.
+    network_mode: service:caddy
+    env_file: .env
+    environment:
+      SBM_URL: https://${SBM_DOMAIN}
+      SBM_ADDR: 127.0.0.1:8750
+    volumes:
+      - sbm-data:/data
+
+volumes:
+  caddy-data:
+  caddy-config:
+  sbm-data:

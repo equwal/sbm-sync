@@ -57,15 +57,43 @@ larger than 4 MB), 429 (too many sign-in attempts).
 
 ## Run your own server
 
+This repository has all the source code of the server, under the
+AGPL-3.0. You need a machine with a domain name that points to it.
+
+### With Docker
+
+Ports 80 and 443 must be open. Caddy gets the TLS certificate by itself.
+
+    git clone https://github.com/equwal/sbm-sync
+    cd sbm-sync
+    cp .env.example .env    # then set SBM_DOMAIN in .env
+    docker compose up -d
+
+The data is in the Docker volume `sbm-data`. To back it up:
+
+    docker compose cp sbm-sync:/data ./backup
+
+To update, run `git pull`, then `docker compose up -d --build`.
+
+### Without Docker
+
     go build
     SBM_URL=https://sbm.example.org ./sbm-sync
 
-Then put it behind a web server that does TLS. `contrib/` has a systemd unit
-and an nginx site. With Go installed elsewhere:
+Then put it behind a web server that does TLS. `contrib/` has a systemd unit,
+an nginx site and a Caddyfile. With Go installed on another computer:
 
     GOOS=linux GOARCH=amd64 CGO_ENABLED=0 go build
 
-Settings, all through the environment:
+### Connect the devices
+
+Sign in with the address of your server: `bm-sync login
+https://sbm.example.org` on a computer. In the add-on and the app, type the
+address in the field "Sync server".
+
+### Settings
+
+All settings come from the environment. With Docker, put them in `.env`.
 
     SBM_URL         public address of the server (default http://localhost:8750)
     SBM_ADDR        address to listen on (default 127.0.0.1:8750)

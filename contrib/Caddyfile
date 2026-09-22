@@ -1,0 +1,8 @@
+# Caddy site for sbm-sync. Caddy gets and renews the TLS certificate by
+# itself. compose.yaml uses this file. Without Docker:
+#   SBM_DOMAIN=sbm.example.org caddy run --config contrib/Caddyfile
+{$SBM_DOMAIN} {
+	reverse_proxy 127.0.0.1:8750 {
+		header_up X-Real-IP {remote_host}
+	}
+}
