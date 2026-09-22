@@ -4,6 +4,7 @@ import (
 	"crypto/hmac"
 	"crypto/sha256"
 	"encoding/hex"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -12,6 +13,7 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"sync"
 	"testing"
@@ -58,6 +60,8 @@ type harness struct {
 	s      *server
 	web    *httptest.Server
 	stripe *fakeStripe
+	mu     sync.Mutex
+	mails  []string // "to\nsubject\nbody" of each email
 }
 
 func newEnv(t *testing.T, billing bool) *harness {
@@ -139,6 +143,44 @@ func (e *harness) body(c *http.Client, path string) string {
 	defer resp.Body.Close()
 	b, _ := io.ReadAll(resp.Body)
 	return string(b)
+}
+
+// withMail turns on the email check. The emails of the server go to
+// e.mails.
+func (e *harness) withMail() {
+	e.s.mail = func(to, subject, body string) error {
+		e.mu.Lock()
+		defer e.mu.Unlock()
+		e.mails = append(e.mails, to+"\n"+subject+"\n"+body)
+		return nil
+	}
+}
+
+func (e *harness) sent() int {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	return len(e.mails)
+}
+
+var checkLink = regexp.MustCompile(`http\S+/verify\?code=[0-9a-f]+`)
+
+// link gives the link in the last email.
+func (e *harness) link() string {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	if len(e.mails) == 0 {
+		e.t.Fatal("no email went out")
+	}
+	return checkLink.FindString(e.mails[len(e.mails)-1])
+}
+
+func (e *harness) open(link string) int {
+	resp, err := http.Get(link)
+	if err != nil {
+		e.t.Fatal(err)
+	}
+	resp.Body.Close()
+	return resp.StatusCode
 }
 
 func TestTwoDevicesSync(t *testing.T) {
@@ -413,7 +455,7 @@ func TestMoney(t *testing.T) {
 func TestStoreSurvivesRestart(t *testing.T) {
 	dir := t.TempDir()
 	s, _ := openStore(dir)
-	a, err := s.signup("me@example.org", "password1")
+	a, err := s.signup("me@example.org", "password1", "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -434,7 +476,7 @@ func TestStoreSurvivesRestart(t *testing.T) {
 
 func TestOldVersionsGo(t *testing.T) {
 	s, _ := openStore(t.TempDir())
-	a, _ := s.signup("me@example.org", "password1")
+	a, _ := s.signup("me@example.org", "password1", "")
 	base := ""
 	for i := range maxVersions + 10 {
 		_, v, err := s.sync(a, base, fmt.Sprintf("line %d\n", i))
@@ -453,5 +495,71 @@ func TestOldVersionsGo(t *testing.T) {
 	}
 	if n != maxVersions {
 		t.Errorf("%d versions kept, want %d", n, maxVersions)
+	}
+}
+
+func TestEmailCheck(t *testing.T) {
+	e := newEnv(t, false)
+	e.withMail()
+	c := e.signup("Me@Example.org")
+	tok := e.token("me@example.org")
+	if e.sent() != 1 || !strings.HasPrefix(e.mails[0], "me@example.org\nConfirm your email address") {
+		t.Fatalf("emails: %q", e.mails)
+	}
+	first := e.link()
+	if code, text, _ := e.sync(tok, "", "a\n"); code != http.StatusForbidden || !strings.Contains(text, "confirm your email address") {
+		t.Fatalf("sync before the check: %d %q", code, text)
+	}
+	if !strings.Contains(e.body(c, "/account"), "Confirm your email address.") {
+		t.Error("the account page does not ask for the check")
+	}
+	// A new email replaces the link of the first one.
+	if resp := e.post(c, "/account/verify", nil); resp.StatusCode != http.StatusSeeOther || e.sent() != 2 {
+		t.Fatalf("send again: %s, %d emails", resp.Status, e.sent())
+	}
+	if code := e.open(first); code != http.StatusBadRequest {
+		t.Errorf("the replaced link: %d", code)
+	}
+	if code := e.open(e.link()); code != http.StatusOK {
+		t.Fatalf("the new link: %d", code)
+	}
+	if code, _, _ := e.sync(tok, "", "a\n"); code != http.StatusOK {
+		t.Errorf("sync after the check: %d", code)
+	}
+	if strings.Contains(e.body(c, "/account"), "Confirm your email address.") {
+		t.Error("the account page still asks for the check")
+	}
+	if code := e.open(e.link()); code != http.StatusBadRequest {
+		t.Errorf("the link works twice: %d", code)
+	}
+	e.post(c, "/account/verify", nil)
+	if e.sent() != 2 {
+		t.Error("an email went out for a confirmed address")
+	}
+}
+
+func TestEmailCheckLimit(t *testing.T) {
+	e := newEnv(t, false)
+	e.withMail()
+	c := e.signup("me@example.org")
+	for range 5 {
+		e.post(c, "/account/verify", nil)
+	}
+	if resp := e.post(c, "/account/verify", nil); resp.StatusCode != http.StatusTooManyRequests {
+		t.Errorf("the seventh email in an hour: %s", resp.Status)
+	}
+	if e.sent() != 6 {
+		t.Errorf("%d emails went out, want 6", e.sent())
+	}
+}
+
+func TestEmailThatDoesNotGoOut(t *testing.T) {
+	e := newEnv(t, false)
+	e.s.mail = func(string, string, string) error { return errors.New("no SMTP server") }
+	c := e.signup("me@example.org")
+	resp := e.post(c, "/account/verify", nil)
+	b, _ := io.ReadAll(resp.Body)
+	if resp.StatusCode != http.StatusBadGateway || !strings.Contains(string(b), "The email did not go out.") {
+		t.Errorf("send again: %s", resp.Status)
 	}
 }

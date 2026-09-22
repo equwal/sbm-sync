@@ -30,6 +30,7 @@ var (
 	errPassword = errors.New("the password must have 8 to 72 characters")
 	errWrong    = errors.New("wrong email or password")
 	errGone     = errors.New("the account does not exist")
+	errCode     = errors.New("no account has this code")
 	hashName    = regexp.MustCompile(`^[0-9a-f]{64}$`)
 )
 
@@ -43,6 +44,7 @@ type Account struct {
 	Customer string    `json:"customer,omitempty"`
 	Status   string    `json:"status,omitempty"`    // of the Stripe subscription
 	StatusAt int64     `json:"status_at,omitempty"` // time of the Stripe event that set Status
+	Verify   string    `json:"verify,omitempty"`    // SHA-256 of the code that confirms the email; empty when confirmed
 }
 
 // Store keeps the accounts in one JSON file, accounts.json, and the versions
@@ -151,7 +153,9 @@ func cleanEmail(email string) (string, error) {
 	return email, nil
 }
 
-func (s *Store) signup(email, password string) (*Account, error) {
+// signup makes an account. With a code, the email of the account is not
+// confirmed until someone opens the link with that code.
+func (s *Store) signup(email, password, code string) (*Account, error) {
 	email, err := cleanEmail(email)
 	if err != nil {
 		return nil, err
@@ -169,6 +173,9 @@ func (s *Store) signup(email, password string) (*Account, error) {
 		return nil, errTaken
 	}
 	a := &Account{ID: random(16), Email: email, Hash: string(hash), Created: time.Now().UTC()}
+	if code != "" {
+		a.Verify = digest(code)
+	}
 	s.index(a)
 	if err := s.save(); err != nil {
 		delete(s.accounts, a.ID)
@@ -268,6 +275,36 @@ func (s *Store) view(a *Account) Account {
 	c := *a
 	c.Tokens = nil
 	return c
+}
+
+// newCode gives a new code that confirms the email of the account. It
+// replaces the old code. Only its hash is kept.
+func (s *Store) newCode(a *Account) (string, error) {
+	code := random(16)
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.accounts[a.ID] == nil {
+		return "", errGone
+	}
+	a.Verify = digest(code)
+	return code, s.save()
+}
+
+// confirm marks the email of the account with the code as confirmed.
+func (s *Store) confirm(code string) (*Account, error) {
+	if code == "" {
+		return nil, errCode
+	}
+	h := digest(code)
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	for _, a := range s.accounts {
+		if a.Verify == h {
+			a.Verify = ""
+			return a, s.save()
+		}
+	}
+	return nil, errCode
 }
 
 func (s *Store) setCustomer(a *Account, customer string) error {

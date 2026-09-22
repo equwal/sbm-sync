@@ -49,8 +49,8 @@ Plain HTTP, for any client with curl.
     POST /api/logout       Authorization: Bearer <token>
 
 Errors come as text: 401 (sign in again), 402 (the subscription or the
-trial has ended), 413 (the file is larger than 4 MB), 429 (too many sign-in
-attempts).
+trial has ended), 403 (confirm the email address first), 413 (the file is
+larger than 4 MB), 429 (too many sign-in attempts).
 
     curl -d email=me@example.org --data-urlencode password=... https://sbm.subread.space/api/login
     curl -H "Authorization: Bearer $token" --data-binary @bookmarks \
@@ -75,10 +75,22 @@ Settings, all through the environment:
     SBM_TRIAL_DAYS  days of sync before payment, with billing on (default 30)
     SBM_BILLING_START  date when billing starts, as 2026-10-01: accounts
                     from before it get the full trial from that date
+    SBM_SMTP_HOST   SMTP server that sends email (optional)
+    SBM_SMTP_PORT   its port (default 587, with STARTTLS; 465 uses TLS
+                    from the start)
+    SBM_SMTP_USER   user name on the SMTP server
+    SBM_SMTP_PASSWORD  password on the SMTP server
+    SBM_MAIL_FROM   sender, as "sbm Sync <sync@example.org>" (default
+                    SBM_SMTP_USER)
 
-Accounts need no email check. To reset a password, the operator deletes the
-account in `accounts.json` (with the server stopped), and the user signs up
-again. The bookmark files stay on the devices.
+Without `SBM_SMTP_HOST`, the server sends no email, and accounts need no
+email check. With it, each new account gets an email with a link. The
+account syncs only after someone opens that link. Accounts from a time
+without `SBM_SMTP_HOST` need no check.
+
+To reset a password, the operator deletes the account in `accounts.json`
+(with the server stopped), and the user signs up again. The bookmark files
+stay on the devices.
 
 ## Billing
 
@@ -104,7 +116,8 @@ Keep the keys out of git: put them in the environment file of the service.
 ## Data
 
     data/accounts.json            accounts: email, bcrypt hash, token hashes,
-                                  Stripe customer and subscription state
+                                  hash of the email check code, Stripe
+                                  customer and subscription state
     data/files/<account>/<sha256> the last 50 versions of each bookmark file
     data/files/<account>/HEAD     name of the current version
 

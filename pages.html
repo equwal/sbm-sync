@@ -76,6 +76,9 @@ Chrome.</p>
 <h1>Your account</h1>
 <p>Signed in as {{.Email}}.</p>
 {{with .Error}}<p class="error">{{.}}</p>{{end}}
+{{if .Unconfirmed}}<p><b>Confirm your email address.</b> Open the link in the
+email that this server sent to {{.Email}}. Sync starts after that.</p>
+<form method="post" action="/account/verify"><button>Send the email again</button></form>{{end}}
 <p><b>{{.State}}</b></p>
 {{if .CanSubscribe}}<form method="post" action="/account/checkout">
 <button name="plan" value="year">Subscribe: {{.Year}}</button>
@@ -103,13 +106,20 @@ their bookmark files.</p>
 </form>
 {{template "foot" .}}{{end}}
 
+{{define "confirmed"}}{{template "head" .}}
+<h1>{{.Title}}</h1>
+{{with .Error}}<p class="error">{{.}}</p>{{else}}<p>Sync is on for {{.Email}}.</p>{{end}}
+<p><a href="/account">Your account</a></p>
+{{template "foot" .}}{{end}}
+
 {{define "privacy"}}{{template "head" .}}
 <h1>Privacy</h1>
 <p>This policy is for this sbm Sync server, the sbm app for Android and the
 sbm add-on for Firefox and Chrome.</p>
 <h2>What the server keeps, and why</h2>
 <ul>
-<li>Your email address and a bcrypt hash of your password, never the password itself: to sign you in.</li>
+<li>Your email address and a bcrypt hash of your password, never the password itself: to sign you in.
+When this server checks email addresses, it also sends you an email with a link that confirms your address.</li>
 <li>Your bookmark file, the last 50 versions that your devices sent: to sync your devices.</li>
 <li>A hash of the sign-in token of each device: to know your devices.</li>
 <li>When you subscribe: your Stripe customer ID and the state of your subscription: to bill you.</li>

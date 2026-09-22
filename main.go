@@ -4,7 +4,7 @@
 // got last time. The server merges the changes of the device into its own
 // copy, keeps the result and sends it back. Accounts are an email address
 // and a password. Billing through Stripe is off unless STRIPE_SECRET_KEY is
-// set.
+// set. Accounts confirm their email address only when SBM_SMTP_HOST is set.
 package main
 
 import (
@@ -16,6 +16,7 @@ import (
 	"log"
 	"net"
 	"net/http"
+	"net/mail"
 	"net/url"
 	"os"
 	"strconv"
@@ -43,6 +44,9 @@ type server struct {
 	prices  map[string]string // plan ("month", "year"): Stripe price ID
 	labels  map[string]string // plan: price as text
 	limit   limiter
+	// mail sends an email. It is nil when the server has no SMTP server:
+	// then accounts need no email check.
+	mail func(to, subject, body string) error
 }
 
 func main() {
@@ -92,8 +96,19 @@ func main() {
 			}
 		}
 	}
+	if host := os.Getenv("SBM_SMTP_HOST"); host != "" {
+		from, err := mail.ParseAddress(env("SBM_MAIL_FROM", os.Getenv("SBM_SMTP_USER")))
+		if err != nil {
+			log.Fatalf("SBM_MAIL_FROM: %v", err)
+		}
+		port := env("SBM_SMTP_PORT", "587")
+		m := &Mailer{Addr: net.JoinHostPort(host, port), TLS: port == "465",
+			User: os.Getenv("SBM_SMTP_USER"), Password: os.Getenv("SBM_SMTP_PASSWORD"),
+			From: from, Hello: u.Hostname()}
+		s.mail = m.send
+	}
 	addr := env("SBM_ADDR", "127.0.0.1:8750")
-	log.Printf("sbm-sync on %s for %s, billing %v", addr, site, s.stripe != nil)
+	log.Printf("sbm-sync on %s for %s, billing %v, email check %v", addr, site, s.stripe != nil, s.mail != nil)
 	hs := &http.Server{
 		Addr:              addr,
 		Handler:           s.routes(),
@@ -123,6 +138,8 @@ func (s *server) routes() http.Handler {
 	m.HandleFunc("POST /login", s.login)
 	m.HandleFunc("POST /logout", s.logout)
 	m.HandleFunc("GET /account", s.account)
+	m.HandleFunc("POST /account/verify", s.resend)
+	m.HandleFunc("GET /verify", s.confirm)
 	m.HandleFunc("POST /account/checkout", s.checkout)
 	m.HandleFunc("POST /account/portal", s.portal)
 	m.HandleFunc("POST /account/delete", s.remove)
@@ -150,7 +167,7 @@ type page struct {
 	Title, Error, Email, State, URL, Contact string
 	Month, Year                              string
 	TrialDays                                int
-	Billing, CanSubscribe                    bool
+	Billing, CanSubscribe, Unconfirmed       bool
 	Customer                                 string
 }
 
@@ -222,7 +239,11 @@ func (s *server) signup(w http.ResponseWriter, r *http.Request) {
 		s.render(w, http.StatusTooManyRequests, "signup", p)
 		return
 	}
-	a, err := s.store.signup(email, r.PostFormValue("password"))
+	code := ""
+	if s.mail != nil {
+		code = random(16)
+	}
+	a, err := s.store.signup(email, r.PostFormValue("password"), code)
 	if errors.Is(err, errTaken) || errors.Is(err, errEmail) || errors.Is(err, errPassword) {
 		p.Error = strings.ToUpper(err.Error()[:1]) + err.Error()[1:] + "."
 		s.render(w, http.StatusBadRequest, "signup", p)
@@ -232,7 +253,74 @@ func (s *server) signup(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	log.Printf("new account %s", a.ID)
+	if code != "" {
+		// The account page tells how to send the email again.
+		if err := s.sendCheck(a.Email, code); err != nil {
+			log.Printf("email check for %s: %v", a.ID, err)
+		}
+	}
 	s.startSession(w, r, a)
+}
+
+// verified tells if the account can sync: its email is confirmed, or the
+// server sends no email and so checks no address.
+func (s *server) verified(a Account) bool {
+	return s.mail == nil || a.Verify == ""
+}
+
+// sendCheck sends the link that confirms the email address.
+func (s *server) sendCheck(email, code string) error {
+	return s.mail(email, "Confirm your email address for sbm Sync",
+		"Open this link to confirm your email address for sbm Sync:\n\n"+
+			s.site+"/verify?code="+code+"\n\n"+
+			"Sync starts after you confirm. If you did not make an account on\n"+
+			s.site+", ignore this email.\n")
+}
+
+// resend sends the email check again, with a new code.
+func (s *server) resend(w http.ResponseWriter, r *http.Request) {
+	u := s.user(r)
+	if !s.sameSite(w, r) {
+		return
+	}
+	if u == nil || s.verified(s.store.view(u)) {
+		http.Redirect(w, r, "/account", http.StatusSeeOther)
+		return
+	}
+	a := s.store.view(u)
+	if !s.limit.allow("mail "+a.ID, 5, time.Hour) {
+		s.showAccount(w, http.StatusTooManyRequests, a, "Too many emails in one hour. Try again later.")
+		return
+	}
+	code, err := s.store.newCode(u)
+	if err != nil {
+		s.fail(w, err)
+		return
+	}
+	if err := s.sendCheck(a.Email, code); err != nil {
+		log.Printf("email check for %s: %v", a.ID, err)
+		s.showAccount(w, http.StatusBadGateway, a, "The email did not go out. Try again later.")
+		return
+	}
+	http.Redirect(w, r, "/account", http.StatusSeeOther)
+}
+
+// confirm takes the link of the email check.
+func (s *server) confirm(w http.ResponseWriter, r *http.Request) {
+	a, err := s.store.confirm(r.URL.Query().Get("code"))
+	if errors.Is(err, errCode) {
+		p := s.page("Confirm your email address")
+		p.Error = "This link does not work: it is wrong, or a newer email replaced it. Sign in to send a new link."
+		s.render(w, http.StatusBadRequest, "confirmed", p)
+		return
+	} else if err != nil {
+		s.fail(w, err)
+		return
+	}
+	log.Printf("account %s: email confirmed", a.ID)
+	p := s.page("Email address confirmed")
+	p.Email = s.store.view(a).Email
+	s.render(w, http.StatusOK, "confirmed", p)
 }
 
 func (s *server) login(w http.ResponseWriter, r *http.Request) {
@@ -313,6 +401,7 @@ func (s *server) account(w http.ResponseWriter, r *http.Request) {
 func (s *server) showAccount(w http.ResponseWriter, status int, a Account, problem string) {
 	p := s.page("Your account")
 	p.Email, p.Error, p.Customer = a.Email, problem, a.Customer
+	p.Unconfirmed = !s.verified(a)
 	left := s.trialLeft(a)
 	switch {
 	case s.stripe == nil:
@@ -519,6 +608,10 @@ func (s *server) sync(w http.ResponseWriter, r *http.Request) {
 	u := s.apiUser(r)
 	if u == nil {
 		http.Error(w, "not signed in: sign in again", http.StatusUnauthorized)
+		return
+	}
+	if !s.verified(s.store.view(u)) {
+		http.Error(w, "confirm your email address first: open the link in the email from sbm Sync, or see "+s.site+"/account", http.StatusForbidden)
 		return
 	}
 	if !s.active(s.store.view(u)) {
