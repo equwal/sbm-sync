@@ -498,6 +498,17 @@ func TestOldVersionsGo(t *testing.T) {
 	}
 }
 
+func TestTeamsPreorderLink(t *testing.T) {
+	e := newEnv(t, false)
+	if strings.Contains(e.body(http.DefaultClient, "/"), "Pre-order") {
+		t.Error("the home page offers teams without SBM_TEAMS_URL")
+	}
+	e.s.teams = "https://buy.stripe.com/test_x"
+	if !strings.Contains(e.body(http.DefaultClient, "/"), `<a href="https://buy.stripe.com/test_x">Pre-order`) {
+		t.Error("the home page has no pre-order link")
+	}
+}
+
 func TestEmailCheck(t *testing.T) {
 	e := newEnv(t, false)
 	e.withMail()

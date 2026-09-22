@@ -46,6 +46,10 @@ your computers, the sbm app for Android, and the sbm add-on for Firefox and
 Chrome.</p>
 {{if .Billing}}<p>Free for {{.TrialDays}} days. Then {{.Year}} or {{.Month}}. Cancel at any time.</p>{{end}}
 <p>{{if .Email}}<a href="/account">Your account</a>{{else}}<a href="/signup">Create an account</a> or <a href="/login">sign in</a>.{{end}}</p>
+{{with .Teams}}<h2>Teams</h2>
+<p>Coming: bookmarks for teams. The members of a team share one bookmark
+file, and sync it on each of their devices. <a href="{{.}}">Pre-order the
+founding plan</a>.</p>{{end}}
 <p class="note">sbm Sync is free software under the AGPL-3.0. You can
 <a href="https://github.com/equwal/sbm-sync">run your own server</a>.</p>
 {{template "foot" .}}{{end}}

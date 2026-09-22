@@ -15,8 +15,7 @@ It is one small Go program. It keeps its data in plain files: no database.
 The only dependency is `golang.org/x/crypto` for bcrypt.
 
 The clients use **https://sbm.subread.space** unless you set another
-server. That server is free for 30 days, then $3 a month or $30 a year.
-Run your own server free of charge.
+server. Sync on that server is free. You can also run your own server.
 
 ## How sync works
 
@@ -72,6 +71,8 @@ Settings, all through the environment:
     SBM_ADDR        address to listen on (default 127.0.0.1:8750)
     SBM_DATA        data directory (default ./data)
     SBM_CONTACT     email address on the privacy page (optional)
+    SBM_TEAMS_URL   page that pre-sells team bookmarks (optional): the
+                    home page links to it
     SBM_TRIAL_DAYS  days of sync before payment, with billing on (default 30)
     SBM_BILLING_START  date when billing starts, as 2026-10-01: accounts
                     from before it get the full trial from that date

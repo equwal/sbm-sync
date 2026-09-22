@@ -41,6 +41,7 @@ type server struct {
 	trial   time.Duration
 	since   time.Time // start of billing: no trial ends before since + trial
 	contact string
+	teams   string            // address of the page that pre-sells team bookmarks, or ""
 	prices  map[string]string // plan ("month", "year"): Stripe price ID
 	labels  map[string]string // plan: price as text
 	limit   limiter
@@ -65,6 +66,10 @@ func main() {
 			log.Fatalf("SBM_BILLING_START: %v", err)
 		}
 	}
+	teams := os.Getenv("SBM_TEAMS_URL")
+	if t, err := url.Parse(teams); teams != "" && (err != nil || t.Host == "" || (t.Scheme != "https" && t.Scheme != "http")) {
+		log.Fatalf("SBM_TEAMS_URL: not an address: %q", teams)
+	}
 	store, err := openStore(env("SBM_DATA", "data"))
 	if err != nil {
 		log.Fatal(err)
@@ -77,6 +82,7 @@ func main() {
 		trial:   time.Duration(days) * 24 * time.Hour,
 		since:   since,
 		contact: os.Getenv("SBM_CONTACT"),
+		teams:   teams,
 		prices:  map[string]string{"month": os.Getenv("STRIPE_PRICE_MONTH"), "year": os.Getenv("STRIPE_PRICE_YEAR")},
 		labels:  map[string]string{"month": "monthly", "year": "yearly"},
 	}
@@ -165,6 +171,7 @@ func (s *server) routes() http.Handler {
 
 type page struct {
 	Title, Error, Email, State, URL, Contact string
+	Teams                                    string // address of the pre-order page
 	Month, Year                              string
 	TrialDays                                int
 	Billing, CanSubscribe, Unconfirmed       bool
@@ -172,7 +179,7 @@ type page struct {
 }
 
 func (s *server) page(title string) page {
-	return page{Title: title, URL: s.site, Contact: s.contact, Billing: s.stripe != nil,
+	return page{Title: title, URL: s.site, Contact: s.contact, Teams: s.teams, Billing: s.stripe != nil,
 		Month: s.labels["month"], Year: s.labels["year"], TrialDays: int(s.trial.Hours() / 24)}
 }
 
