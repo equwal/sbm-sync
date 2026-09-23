@@ -535,7 +535,7 @@ func TestTerms(t *testing.T) {
 	e.s.contact, e.s.support, e.s.manage = "me@example.org", "https://buy.stripe.com/support", "https://billing.stripe.com/p/login/x"
 	page := e.body(http.DefaultClient, "/terms")
 	for _, want := range []string{"Terms of sale", "not Google", "$30 a year", "supporter subscription",
-		`<a href="https://billing.stripe.com/p/login/x">`, "within 30 days", `<a href="mailto:me@example.org">`} {
+		`<a href="https://billing.stripe.com/p/login/x">`, "within 30 days", `To cancel by email, write to <a href="mailto:me@example.org">`} {
 		if !strings.Contains(page, want) {
 			t.Errorf("the terms lack %q", want)
 		}
