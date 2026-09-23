@@ -506,7 +506,7 @@ func TestPaymentLinks(t *testing.T) {
 	}
 	// The link for large teams needs the link for small teams.
 	e.s.teamsLarge = "https://buy.stripe.com/large"
-	if strings.Contains(e.body(c, "/"), "large") {
+	if strings.Contains(e.body(c, "/"), e.s.teamsLarge) {
 		t.Error("the home page links only to large teams")
 	}
 	e.s.teams, e.s.support = "https://buy.stripe.com/small", "https://buy.stripe.com/support"
