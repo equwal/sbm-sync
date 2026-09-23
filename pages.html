@@ -37,6 +37,7 @@ details { margin: 1em 0; } summary { cursor: pointer; }
 <footer>
 <a href="https://github.com/equwal/sbm-sync">Source code</a> ·
 <a href="/privacy">Privacy</a> ·
+<a href="/terms">Terms of sale</a> ·
 <a href="https://ko-fi.com/truex">Support sbm on Ko-fi</a>
 </footer>
 </body>
@@ -44,7 +45,8 @@ details { margin: 1em 0; } summary { cursor: pointer; }
 {{end}}
 
 {{define "support"}}{{with .Support}}<p>sbm Sync is free. To pay for the server and the work on sbm,
-<a href="{{.}}">become a supporter</a>.</p>{{end}}{{end}}
+<a href="{{.}}">become a supporter</a>.{{with $.Manage}} Supporters can
+<a href="{{.}}">manage or cancel</a> their subscription.{{end}}</p>{{end}}{{end}}
 
 {{define "home"}}{{template "head" .}}
 <h1>Your bookmarks, the same everywhere</h1>
@@ -208,6 +210,38 @@ lines come at the end, and the other lines keep their order.</p>
 <h1>{{.Title}}</h1>
 {{with .Error}}<p class="error">{{.}}</p>{{else}}<p>Sync is on for {{.Email}}.</p>{{end}}
 <p><a href="/account">Your account</a></p>
+{{template "foot" .}}{{end}}
+
+{{define "done"}}{{template "head" .}}
+<h1>Back to sbm</h1>
+<p>You can close this tab. The options page of the sbm add-on shows the new
+state of your account.</p>
+<p class="note"><a href="/account">Your account</a> on this website</p>
+{{template "foot" .}}{{end}}
+
+{{define "terms"}}{{template "head" .}}
+<h1>Terms of sale</h1>
+<p>The operator of this sbm Sync server sells the paid plans on it,
+not Google, Mozilla or Stripe.{{with .Contact}} Contact: <a href="mailto:{{.}}">{{.}}</a>.{{end}}
+Stripe takes the payments. This server never sees your card.</p>
+<h2>What you can buy</h2>
+<ul>
+{{if .Billing}}<li>Sync on this server: {{.Year}} or {{.Month}}, after a free trial of {{.TrialDays}} days.</li>{{end}}
+{{with .Support}}<li>A supporter subscription. It pays for the server and the work on sbm. It adds no features.</li>{{end}}
+{{with .Teams}}<li>A pre-order of team bookmarks. You pay now for a plan that comes later.</li>{{end}}
+{{if not (or .Billing .Support .Teams)}}<li>Nothing: sync on this server is free.</li>{{end}}
+</ul>
+<h2>Cancel</h2>
+<p>You can cancel a subscription at any time.{{if .Billing}} For sync, use
+Manage billing on your account page or in the add-on.{{end}}{{with .Manage}}
+For a supporter subscription, use <a href="{{.}}">this page</a>.{{end}}{{with .Contact}}
+To cancel by email, write to <a href="mailto:{{.}}">{{.}}</a>.{{end}} A subscription
+that you cancel stays active to the end of the period that you paid for.
+Then the charges stop.</p>
+<h2>Refunds</h2>
+<p>For a full refund, write {{with .Contact}}to <a href="mailto:{{.}}">{{.}}</a>
+{{end}}within 30 days of a charge.{{if .Teams}} A pre-order gets a full
+refund at any time before the team plan starts.{{end}}</p>
 {{template "foot" .}}{{end}}
 
 {{define "privacy"}}{{template "head" .}}

@@ -50,16 +50,17 @@ func (s *Stripe) call(method, path string, form url.Values) (map[string]any, err
 }
 
 // checkout starts a Stripe Checkout session for a subscription to price and
-// gives the address of its page.
-func (s *Stripe) checkout(a Account, price, site string) (string, error) {
+// gives the address of its page. After the payment, or without it, Stripe
+// sends the customer to back.
+func (s *Stripe) checkout(a Account, price, back string) (string, error) {
 	form := url.Values{
 		"mode":                                 {"subscription"},
 		"line_items[0][price]":                 {price},
 		"line_items[0][quantity]":              {"1"},
 		"client_reference_id":                  {a.ID},
 		"subscription_data[metadata][account]": {a.ID},
-		"success_url":                          {site + "/account"},
-		"cancel_url":                           {site + "/account"},
+		"success_url":                          {back},
+		"cancel_url":                           {back},
 	}
 	if a.Customer != "" {
 		form.Set("customer", a.Customer)
@@ -78,10 +79,11 @@ func (s *Stripe) checkout(a Account, price, site string) (string, error) {
 }
 
 // portal gives the address of a Stripe customer portal session, where the
-// customer changes the card, sees invoices or cancels.
-func (s *Stripe) portal(customer, site string) (string, error) {
+// customer changes the card, sees invoices or cancels. The portal links
+// back to back.
+func (s *Stripe) portal(customer, back string) (string, error) {
 	out, err := s.call("POST", "/v1/billing_portal/sessions",
-		url.Values{"customer": {customer}, "return_url": {site + "/account"}})
+		url.Values{"customer": {customer}, "return_url": {back}})
 	if err != nil {
 		return "", err
 	}
