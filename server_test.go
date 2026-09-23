@@ -332,7 +332,8 @@ func TestTrialAndSubscription(t *testing.T) {
 		t.Fatalf("checkout: %s to %q", resp.Status, resp.Header.Get("Location"))
 	}
 	call := e.stripe.called("POST /v1/checkout/sessions")
-	for _, want := range []string{"client_reference_id=" + a.ID, "price%5D=price_y", "customer_email=me%40example.org", "mode=subscription"} {
+	for _, want := range []string{"client_reference_id=" + a.ID, "price%5D=price_y", "customer_email=me%40example.org", "mode=subscription",
+		"success_url=" + url.QueryEscape(e.web.URL+"/account")} {
 		if !strings.Contains(call, want) {
 			t.Errorf("checkout call %q lacks %q", call, want)
 		}
@@ -522,6 +523,134 @@ func TestPaymentLinks(t *testing.T) {
 	}
 	if !strings.Contains(e.body(c, "/account"), `<a href="https://buy.stripe.com/support">become a supporter</a>`) {
 		t.Error("the account page has no supporter link")
+	}
+	e.s.manage = "https://billing.stripe.com/p/login/x"
+	if !strings.Contains(e.body(c, "/account"), `<a href="https://billing.stripe.com/p/login/x">manage or cancel</a>`) {
+		t.Error("the account page does not tell supporters where to cancel")
+	}
+}
+
+func TestTerms(t *testing.T) {
+	e := newEnv(t, true)
+	e.s.contact, e.s.support, e.s.manage = "me@example.org", "https://buy.stripe.com/support", "https://billing.stripe.com/p/login/x"
+	page := e.body(http.DefaultClient, "/terms")
+	for _, want := range []string{"Terms of sale", "not Google", "$30 a year", "supporter subscription",
+		`<a href="https://billing.stripe.com/p/login/x">`, "within 30 days", `<a href="mailto:me@example.org">`} {
+		if !strings.Contains(page, want) {
+			t.Errorf("the terms lack %q", want)
+		}
+	}
+	if !strings.Contains(e.body(http.DefaultClient, "/"), `<a href="/terms">Terms of sale</a>`) {
+		t.Error("the home page does not link to the terms")
+	}
+}
+
+// api sends a request with the token of a device, as the add-on does, and
+// gives the status and the body of the answer.
+func (e *harness) api(method, token, path string, form url.Values) (int, string) {
+	req, _ := http.NewRequest(method, e.web.URL+path, strings.NewReader(form.Encode()))
+	req.Header.Set("Authorization", "Bearer "+token)
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		e.t.Fatal(err)
+	}
+	defer resp.Body.Close()
+	b, _ := io.ReadAll(resp.Body)
+	return resp.StatusCode, string(b)
+}
+
+func TestAccountAPIWithoutBilling(t *testing.T) {
+	e := newEnv(t, false)
+	e.signup("me@example.org")
+	tok := e.token("me@example.org")
+	if code, _ := e.api("GET", "wrong", "/api/account", nil); code != http.StatusUnauthorized {
+		t.Errorf("bad token: %d", code)
+	}
+	start := `{"email":"me@example.org","state":"Sync is on.","plans":[],"portal":false,"terms":"` + e.web.URL + `/terms"`
+	if code, body := e.api("GET", tok, "/api/account", nil); code != http.StatusOK || body != start+"}\n" {
+		t.Errorf("account: %d %s", code, body)
+	}
+	// The link for large teams needs the link for small teams, and the page
+	// that manages a supporter subscription needs the supporter link, as on
+	// the web pages.
+	e.s.manage, e.s.teamsLarge = "https://billing.stripe.com/p/login/x", "https://buy.stripe.com/large"
+	if _, body := e.api("GET", tok, "/api/account", nil); body != start+"}\n" {
+		t.Errorf("account with links that need other links: %s", body)
+	}
+	e.s.support = "https://buy.stripe.com/support"
+	want := start + `,"support":"https://buy.stripe.com/support","manage":"https://billing.stripe.com/p/login/x"}` + "\n"
+	if _, body := e.api("GET", tok, "/api/account", nil); body != want {
+		t.Errorf("account with a supporter link: %s", body)
+	}
+	e.s.teams = "https://buy.stripe.com/small"
+	_, body := e.api("GET", tok, "/api/account", nil)
+	if !strings.HasSuffix(body, `"teams":"https://buy.stripe.com/small","teams_large":"https://buy.stripe.com/large"}`+"\n") {
+		t.Errorf("account with team links: %s", body)
+	}
+	for _, path := range []string{"/api/checkout", "/api/portal"} {
+		if code, _ := e.api("POST", tok, path, url.Values{"plan": {"year"}}); code != http.StatusNotFound {
+			t.Errorf("%s without billing: %d", path, code)
+		}
+	}
+}
+
+func TestBillingAPI(t *testing.T) {
+	e := newEnv(t, true)
+	e.signup("me@example.org")
+	tok := e.token("me@example.org")
+	a := e.s.store.byTok(tok)
+	terms := `"terms":"` + e.web.URL + `/terms"`
+	want := `{"email":"me@example.org","state":"Free trial: 30 days left.",` +
+		`"plans":[{"id":"year","label":"$30 a year"},{"id":"month","label":"$3 a month"}],"portal":false,` + terms + "}\n"
+	if _, body := e.api("GET", tok, "/api/account", nil); body != want {
+		t.Errorf("account in the trial: %s", body)
+	}
+	if code, _ := e.api("POST", "wrong", "/api/checkout", url.Values{"plan": {"year"}}); code != http.StatusUnauthorized {
+		t.Errorf("checkout with a bad token: %d", code)
+	}
+	if code, _ := e.api("POST", tok, "/api/checkout", url.Values{"plan": {"week"}}); code != http.StatusBadRequest {
+		t.Errorf("checkout for no such plan: %d", code)
+	}
+	if code, _ := e.api("POST", tok, "/api/portal", nil); code != http.StatusConflict {
+		t.Errorf("portal before a subscription: %d", code)
+	}
+
+	code, body := e.api("POST", tok, "/api/checkout", url.Values{"plan": {"month"}})
+	if code != http.StatusOK || body != "https://checkout.stripe.test/s1\n" {
+		t.Fatalf("checkout: %d %q", code, body)
+	}
+	// Stripe sends the customer to a page that says to go back to the add-on:
+	// the website does not know the add-on's sign-in.
+	call := e.stripe.called("POST /v1/checkout/sessions")
+	for _, want := range []string{"client_reference_id=" + a.ID, "price%5D=price_m",
+		"success_url=" + url.QueryEscape(e.web.URL+"/done"), "cancel_url=" + url.QueryEscape(e.web.URL+"/done")} {
+		if !strings.Contains(call, want) {
+			t.Errorf("checkout call %q lacks %q", call, want)
+		}
+	}
+	if !strings.Contains(e.body(http.DefaultClient, "/done"), "You can close this tab.") {
+		t.Error("the page after Stripe does not say to close it")
+	}
+
+	now := time.Now().Unix()
+	e.event(now, "checkout.session.completed", fmt.Sprintf(`{"customer":"cus_9","client_reference_id":%q}`, a.ID))
+	e.event(now+1, "customer.subscription.created", `{"customer":"cus_9","status":"active"}`)
+	want = `{"email":"me@example.org","state":"Your subscription is active.","plans":[],"portal":true,` + terms + "}\n"
+	if _, body := e.api("GET", tok, "/api/account", nil); body != want {
+		t.Errorf("account with a subscription: %s", body)
+	}
+	// A second subscription would charge the customer twice.
+	if code, _ := e.api("POST", tok, "/api/checkout", url.Values{"plan": {"year"}}); code != http.StatusConflict {
+		t.Errorf("second checkout: %d", code)
+	}
+	code, body = e.api("POST", tok, "/api/portal", nil)
+	if code != http.StatusOK || body != "https://billing.stripe.test/p1\n" {
+		t.Fatalf("portal: %d %q", code, body)
+	}
+	call = e.stripe.called("POST /v1/billing_portal/sessions")
+	if !strings.Contains(call, "customer=cus_9") || !strings.Contains(call, "return_url="+url.QueryEscape(e.web.URL+"/done")) {
+		t.Errorf("portal call: %q", call)
 	}
 }
 

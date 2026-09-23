@@ -46,10 +46,28 @@ Plain HTTP, for any client with curl.
                            body: the bookmark file
                            200: the merged file; header Sbm-Version: <new V>
     POST /api/logout       Authorization: Bearer <token>
+    GET  /api/account      Authorization: Bearer <token>
+                           200: JSON: email; state, one sentence; plans,
+                           the subscriptions that the account can start,
+                           each with id and label; portal, true when
+                           /api/portal works; terms, the address of the
+                           terms of sale; the payment links support,
+                           manage, teams and teams_large, when the server
+                           has them
+    POST /api/checkout     Authorization: Bearer <token>; form field plan
+                           (an id from plans)
+                           200: the address of a Stripe Checkout page
+    POST /api/portal       Authorization: Bearer <token>
+                           200: the address of the Stripe customer portal
 
 Errors come as text: 401 (sign in again), 402 (the subscription or the
-trial has ended), 403 (confirm the email address first), 413 (the file is
-larger than 4 MB), 429 (too many sign-in attempts).
+trial has ended), 403 (confirm the email address first), 404 (the server
+has no billing), 409 (a subscription exists already, or no billing exists
+yet), 413 (the file is larger than 4 MB), 429 (too many sign-in attempts).
+
+The add-on opens the Stripe pages in a new tab. After them, Stripe shows
+the page `/done` of the server, which tells the user to go back to the
+add-on.
 
     curl -d email=me@example.org --data-urlencode password=... https://sbm.subread.space/api/login
     curl -H "Authorization: Bearer $token" --data-binary @bookmarks \
@@ -104,6 +122,9 @@ All settings come from the environment. With Docker, put them in `.env`.
     SBM_TEAMS_LARGE_URL  the same for teams of 11 people or more
     SBM_SUPPORT_URL page of a supporter subscription (optional): the home
                     page and the account page link to it
+    SBM_MANAGE_URL  page where supporters manage or cancel their
+                    subscription, such as the login link of the Stripe
+                    customer portal (optional, with SBM_SUPPORT_URL)
     SBM_TRIAL_DAYS  days of sync before payment, with billing on (default 30)
     SBM_BILLING_START  date when billing starts, as 2026-10-01: accounts
                     from before it get the full trial from that date
@@ -144,6 +165,10 @@ is free for all accounts. To turn it on:
         STRIPE_PRICE_YEAR      price_... of the yearly price
 
 Keep the keys out of git: put them in the environment file of the service.
+
+The page `/terms` shows the terms of sale, for all payments of the server.
+The Chrome Web Store asks for them. To change them, edit the template
+`terms` in `pages.html`.
 
 ## Data
 

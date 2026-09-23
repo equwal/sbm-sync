@@ -42,11 +42,12 @@ type server struct {
 	since   time.Time // start of billing: no trial ends before since + trial
 	contact string
 	// Payment pages, or "": the pre-order of team bookmarks for up to 10
-	// people, the same for 11 people or more, and a supporter subscription.
-	teams, teamsLarge, support string
-	prices                     map[string]string // plan ("month", "year"): Stripe price ID
-	labels                     map[string]string // plan: price as text
-	limit                      limiter
+	// people, the same for 11 people or more, a supporter subscription, and
+	// the page where supporters manage or cancel their subscription.
+	teams, teamsLarge, support, manage string
+	prices                             map[string]string // plan ("month", "year"): Stripe price ID
+	labels                             map[string]string // plan: price as text
+	limit                              limiter
 	// mail sends an email. It is nil when the server has no SMTP server:
 	// then accounts need no email check.
 	mail func(to, subject, body string) error
@@ -83,6 +84,7 @@ func main() {
 		teams:      link("SBM_TEAMS_URL"),
 		teamsLarge: link("SBM_TEAMS_LARGE_URL"),
 		support:    link("SBM_SUPPORT_URL"),
+		manage:     link("SBM_MANAGE_URL"),
 		prices:     map[string]string{"month": os.Getenv("STRIPE_PRICE_MONTH"), "year": os.Getenv("STRIPE_PRICE_YEAR")},
 		labels:     map[string]string{"month": "monthly", "year": "yearly"},
 	}
@@ -148,6 +150,7 @@ func (s *server) routes() http.Handler {
 	m := http.NewServeMux()
 	m.HandleFunc("GET /{$}", s.home)
 	m.HandleFunc("GET /privacy", s.privacy)
+	m.HandleFunc("GET /terms", s.terms)
 	m.HandleFunc("GET /signup", s.form("signup"))
 	m.HandleFunc("POST /signup", s.signup)
 	m.HandleFunc("GET /login", s.form("login"))
@@ -159,10 +162,14 @@ func (s *server) routes() http.Handler {
 	m.HandleFunc("POST /account/checkout", s.checkout)
 	m.HandleFunc("POST /account/portal", s.portal)
 	m.HandleFunc("POST /account/delete", s.remove)
+	m.HandleFunc("GET /done", s.done)
 	m.HandleFunc("POST /stripe", s.webhook)
 	m.HandleFunc("POST /api/login", s.apiLogin)
 	m.HandleFunc("POST /api/logout", s.apiLogout)
 	m.HandleFunc("POST /api/sync", s.sync)
+	m.HandleFunc("GET /api/account", s.apiAccount)
+	m.HandleFunc("POST /api/checkout", s.apiCheckout)
+	m.HandleFunc("POST /api/portal", s.apiPortal)
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		h := w.Header()
 		h.Set("Content-Security-Policy", "default-src 'none'; style-src 'unsafe-inline'; "+
@@ -181,7 +188,7 @@ func (s *server) routes() http.Handler {
 
 type page struct {
 	Title, Error, Email, State, URL, Contact string
-	Teams, TeamsLarge, Support               string // addresses of payment pages
+	Teams, TeamsLarge, Support, Manage       string // addresses of payment pages
 	Month, Year                              string
 	TrialDays                                int
 	Billing, CanSubscribe, Unconfirmed       bool
@@ -190,7 +197,7 @@ type page struct {
 
 func (s *server) page(title string) page {
 	return page{Title: title, URL: s.site, Contact: s.contact, Billing: s.stripe != nil,
-		Teams: s.teams, TeamsLarge: s.teamsLarge, Support: s.support,
+		Teams: s.teams, TeamsLarge: s.teamsLarge, Support: s.support, Manage: s.manage,
 		Month: s.labels["month"], Year: s.labels["year"], TrialDays: int(s.trial.Hours() / 24)}
 }
 
@@ -212,6 +219,12 @@ func (s *server) home(w http.ResponseWriter, r *http.Request) {
 
 func (s *server) privacy(w http.ResponseWriter, r *http.Request) {
 	s.render(w, http.StatusOK, "privacy", s.page("Privacy"))
+}
+
+// terms shows the terms of sale. The Chrome Web Store asks for them when an
+// add-on leads to payments.
+func (s *server) terms(w http.ResponseWriter, r *http.Request) {
+	s.render(w, http.StatusOK, "terms", s.page("Terms of sale"))
 }
 
 func (s *server) form(name string) http.HandlerFunc {
@@ -420,25 +433,30 @@ func (s *server) showAccount(w http.ResponseWriter, status int, a Account, probl
 	p := s.page("Your account")
 	p.Email, p.Error, p.Customer = a.Email, problem, a.Customer
 	p.Unconfirmed = !s.verified(a)
+	p.State = s.state(a)
+	p.CanSubscribe = s.stripe != nil && !paid(a.Status)
+	s.render(w, status, "account", p)
+}
+
+// state tells in one sentence if sync works for the account, and why.
+func (s *server) state(a Account) string {
 	left := s.trialLeft(a)
 	switch {
 	case s.stripe == nil:
-		p.State = "Sync is on."
+		return "Sync is on."
 	case a.Status == "past_due":
-		p.State = "Your last payment failed. Update your card in Manage billing."
+		return "Your last payment failed. Update your card in Manage billing."
 	case paid(a.Status):
-		p.State = "Your subscription is active."
+		return "Your subscription is active."
 	case left > 0:
 		days := int(left.Hours()/24) + 1
-		p.State = "Free trial: " + strconv.Itoa(days) + " days left."
 		if days == 1 {
-			p.State = "Free trial: 1 day left."
+			return "Free trial: 1 day left."
 		}
+		return "Free trial: " + strconv.Itoa(days) + " days left."
 	default:
-		p.State = "Your free trial has ended. Sync is paused until you subscribe."
+		return "Your free trial has ended. Sync is paused until you subscribe."
 	}
-	p.CanSubscribe = s.stripe != nil && !paid(a.Status)
-	s.render(w, status, "account", p)
 }
 
 func (s *server) checkout(w http.ResponseWriter, r *http.Request) {
@@ -455,7 +473,7 @@ func (s *server) checkout(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "no such plan", http.StatusBadRequest)
 		return
 	}
-	to, err := s.stripe.checkout(s.store.view(u), price, s.site)
+	to, err := s.stripe.checkout(s.store.view(u), price, s.site+"/account")
 	if err != nil {
 		log.Printf("checkout for %s: %v", u.ID, err)
 		s.showAccount(w, http.StatusBadGateway, s.store.view(u), "Stripe did not answer. Try again later.")
@@ -478,7 +496,7 @@ func (s *server) portal(w http.ResponseWriter, r *http.Request) {
 		http.Redirect(w, r, "/account", http.StatusSeeOther)
 		return
 	}
-	to, err := s.stripe.portal(a.Customer, s.site)
+	to, err := s.stripe.portal(a.Customer, s.site+"/account")
 	if err != nil {
 		log.Printf("portal for %s: %v", u.ID, err)
 		s.showAccount(w, http.StatusBadGateway, a, "Stripe did not answer. Try again later.")
@@ -516,6 +534,13 @@ func (s *server) remove(w http.ResponseWriter, r *http.Request) {
 	log.Printf("deleted account %s", a.ID)
 	s.setCookie(w, "", -1)
 	http.Redirect(w, r, "/", http.StatusSeeOther)
+}
+
+// done is the page where Stripe sends a customer after a payment that the
+// add-on started. This website does not know the sign-in of the add-on, so
+// the page tells the customer to go back to the add-on.
+func (s *server) done(w http.ResponseWriter, r *http.Request) {
+	s.render(w, http.StatusOK, "done", s.page("Back to sbm"))
 }
 
 // webhook takes the events of Stripe that change a subscription.
@@ -662,6 +687,111 @@ func (s *server) sync(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Sbm-Version", version)
 	w.Header().Set("Access-Control-Expose-Headers", "Sbm-Version")
 	io.WriteString(w, text)
+}
+
+// accountInfo is the answer of GET /api/account: the state of the account
+// and the payments that it can start. The add-on shows it.
+type accountInfo struct {
+	Email      string     `json:"email"`
+	State      string     `json:"state"`
+	Plans      []planInfo `json:"plans"`  // subscriptions that the account can start
+	Portal     bool       `json:"portal"` // POST /api/portal works: the account is a Stripe customer
+	Terms      string     `json:"terms"`  // address of the terms of sale
+	Support    string     `json:"support,omitempty"`
+	Manage     string     `json:"manage,omitempty"`
+	Teams      string     `json:"teams,omitempty"`
+	TeamsLarge string     `json:"teams_large,omitempty"`
+}
+
+type planInfo struct {
+	ID    string `json:"id"`    // value of the form field plan of POST /api/checkout
+	Label string `json:"label"` // price as text, such as "$30 a year"
+}
+
+func (s *server) apiAccount(w http.ResponseWriter, r *http.Request) {
+	u := s.apiUser(r)
+	if u == nil {
+		http.Error(w, "not signed in: sign in again", http.StatusUnauthorized)
+		return
+	}
+	a := s.store.view(u)
+	info := accountInfo{Email: a.Email, State: s.state(a), Plans: []planInfo{},
+		Portal: s.stripe != nil && a.Customer != "", Terms: s.site + "/terms", Support: s.support, Teams: s.teams}
+	if s.stripe != nil && !paid(a.Status) {
+		for _, id := range []string{"year", "month"} {
+			info.Plans = append(info.Plans, planInfo{id, s.labels[id]})
+		}
+	}
+	// As on the web pages: a link that needs another link goes without it.
+	if s.support != "" {
+		info.Manage = s.manage
+	}
+	if s.teams != "" {
+		info.TeamsLarge = s.teamsLarge
+	}
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(info)
+}
+
+// apiCheckout starts a subscription to the plan in the form field plan. It
+// gives the address of the Stripe Checkout page as text.
+func (s *server) apiCheckout(w http.ResponseWriter, r *http.Request) {
+	a, ok := s.apiBilling(w, r)
+	if !ok {
+		return
+	}
+	price := s.prices[r.PostFormValue("plan")]
+	if price == "" {
+		http.Error(w, "no such plan", http.StatusBadRequest)
+		return
+	}
+	if paid(a.Status) {
+		http.Error(w, "you have a subscription already: see Manage billing", http.StatusConflict)
+		return
+	}
+	to, err := s.stripe.checkout(a, price, s.site+"/done")
+	s.sendAddress(w, a, to, err)
+}
+
+// apiPortal gives the address of the Stripe customer portal as text.
+func (s *server) apiPortal(w http.ResponseWriter, r *http.Request) {
+	a, ok := s.apiBilling(w, r)
+	if !ok {
+		return
+	}
+	if a.Customer == "" {
+		http.Error(w, "you have no billing yet: subscribe first", http.StatusConflict)
+		return
+	}
+	to, err := s.stripe.portal(a.Customer, s.site+"/done")
+	s.sendAddress(w, a, to, err)
+}
+
+// apiBilling gives the account of a billing request. It answers the request
+// itself, and gives false, when it is not signed in or the server has no
+// billing.
+func (s *server) apiBilling(w http.ResponseWriter, r *http.Request) (Account, bool) {
+	u := s.apiUser(r)
+	if u == nil {
+		http.Error(w, "not signed in: sign in again", http.StatusUnauthorized)
+		return Account{}, false
+	}
+	if s.stripe == nil {
+		http.Error(w, "this server has no billing", http.StatusNotFound)
+		return Account{}, false
+	}
+	return s.store.view(u), true
+}
+
+// sendAddress answers with the address of a Stripe page, as text.
+func (s *server) sendAddress(w http.ResponseWriter, a Account, to string, err error) {
+	if err != nil {
+		log.Printf("billing for %s: %v", a.ID, err)
+		http.Error(w, "Stripe did not answer: try again later", http.StatusBadGateway)
+		return
+	}
+	w.Header().Set("Content-Type", "text/plain; charset=utf-8")
+	io.WriteString(w, to+"\n")
 }
 
 func (s *server) fail(w http.ResponseWriter, err error) {
