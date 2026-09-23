@@ -36,6 +36,29 @@ The merge compares whole lines:
 When the server does not know the last version of a device (for its first
 sync), nothing is removed: the result is the union of both files.
 
+## Bookmarks on the web
+
+After you sign in, the page **/bookmarks** shows your bookmarks in any
+browser, also on a phone. It does what bm does:
+
+- Search as fzf does, with the search of the add-on. Pick a tag. Sort by
+  date, URL, description or tag. Text that no bookmark matches opens as an
+  address, or as a web search.
+- Add a bookmark. A URL that is a bookmark already is refused.
+- Edit or delete a bookmark.
+- Edit the whole file, as `bm -e` does.
+- Import the HTML file that a browser exports, as
+  `bm-import bookmarks.html | bm --merge` does: folders become tags, and
+  known URLs are skipped. A file of bookmark lines works too.
+- Download the file.
+
+Each change goes through the same merge as a sync, so the changes that your
+devices made since the page opened stay. The pages have no script.
+
+The pages obey the rules of sync: the email address must be confirmed, and
+with billing on, the account needs its trial or a subscription. The
+download always works, because the bookmarks belong to their owner.
+
 ## Protocol
 
 Plain HTTP, for any client with curl.

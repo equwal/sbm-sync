@@ -170,6 +170,14 @@ func (s *server) routes() http.Handler {
 	m.HandleFunc("GET /api/account", s.apiAccount)
 	m.HandleFunc("POST /api/checkout", s.apiCheckout)
 	m.HandleFunc("POST /api/portal", s.apiPortal)
+	m.HandleFunc("GET /bookmarks", s.bookmarks)
+	m.HandleFunc("POST /bookmarks/add", s.addBookmark)
+	m.HandleFunc("GET /bookmarks/edit", s.editBookmark)
+	m.HandleFunc("POST /bookmarks/edit", s.saveBookmark)
+	m.HandleFunc("GET /bookmarks/file", s.bookmarkFile)
+	m.HandleFunc("POST /bookmarks/file", s.saveFile)
+	m.HandleFunc("POST /bookmarks/import", s.importFile)
+	m.HandleFunc("GET /bookmarks.txt", s.download)
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		h := w.Header()
 		h.Set("Content-Security-Policy", "default-src 'none'; style-src 'unsafe-inline'; "+
@@ -192,6 +200,7 @@ type page struct {
 	Month, Year                              string
 	TrialDays                                int
 	Billing, CanSubscribe, Unconfirmed       bool
+	Active                                   bool // the account can sync and use its bookmarks here
 	Customer                                 string
 }
 
@@ -201,7 +210,7 @@ func (s *server) page(title string) page {
 		Month: s.labels["month"], Year: s.labels["year"], TrialDays: int(s.trial.Hours() / 24)}
 }
 
-func (s *server) render(w http.ResponseWriter, status int, name string, p page) {
+func (s *server) render(w http.ResponseWriter, status int, name string, p any) {
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	w.WriteHeader(status)
 	if err := pages.ExecuteTemplate(w, name, p); err != nil {
@@ -211,8 +220,9 @@ func (s *server) render(w http.ResponseWriter, status int, name string, p page) 
 
 func (s *server) home(w http.ResponseWriter, r *http.Request) {
 	p := s.page("")
-	if a := s.user(r); a != nil {
-		p.Email = a.Email
+	if u := s.user(r); u != nil {
+		a := s.store.view(u)
+		p.Email, p.Active = a.Email, s.verified(a) && s.active(a)
 	}
 	s.render(w, http.StatusOK, "home", p)
 }
@@ -290,7 +300,7 @@ func (s *server) signup(w http.ResponseWriter, r *http.Request) {
 			log.Printf("email check for %s: %v", a.ID, err)
 		}
 	}
-	s.startSession(w, r, a)
+	s.startSession(w, r, a, "/account")
 }
 
 // verified tells if the account can sync: its email is confirmed, or the
@@ -372,17 +382,18 @@ func (s *server) login(w http.ResponseWriter, r *http.Request) {
 		s.render(w, http.StatusUnauthorized, "login", p)
 		return
 	}
-	s.startSession(w, r, a)
+	s.startSession(w, r, a, "/bookmarks")
 }
 
-func (s *server) startSession(w http.ResponseWriter, r *http.Request, a *Account) {
+// startSession signs the browser in and sends it to the page at the path to.
+func (s *server) startSession(w http.ResponseWriter, r *http.Request, a *Account, to string) {
 	token, err := s.store.signIn(a)
 	if err != nil {
 		s.fail(w, err)
 		return
 	}
 	s.setCookie(w, token, 365*24*3600)
-	http.Redirect(w, r, "/account", http.StatusSeeOther)
+	http.Redirect(w, r, to, http.StatusSeeOther)
 }
 
 func (s *server) logout(w http.ResponseWriter, r *http.Request) {
@@ -433,6 +444,7 @@ func (s *server) showAccount(w http.ResponseWriter, status int, a Account, probl
 	p := s.page("Your account")
 	p.Email, p.Error, p.Customer = a.Email, problem, a.Customer
 	p.Unconfirmed = !s.verified(a)
+	p.Active = s.verified(a) && s.active(a)
 	p.State = s.state(a)
 	p.CanSubscribe = s.stripe != nil && !paid(a.Status)
 	s.render(w, status, "account", p)
