@@ -133,8 +133,8 @@ their bookmark files.</p>
 <h1>Your bookmarks</h1>
 {{with .Error}}<p class="error">{{.}}</p>{{end}}
 {{with .Done}}<p><b>{{.}}</b></p>{{end}}
-<form method="get" action="/bookmarks">
-<input type="search" name="q" value="{{.Query}}" placeholder="Search, or type an address" aria-label="Search">
+<form id="search" method="get" action="/bookmarks">
+<input type="search" name="q" value="{{.Query}}" placeholder="Search, or type an address" aria-label="Search" autocomplete="off" autofocus>
 {{with .Tag}}<input type="hidden" name="tag" value="{{.}}">{{end}}
 <label>Order <select name="sort">
 <option value="recent"{{if eq .Sort "recent"}} selected{{end}}>newest first</option>
@@ -159,16 +159,19 @@ works too. URLs that are bookmarks already are skipped.</p>
 <label>File <input type="file" name="file" required></label>
 <button>Import</button>
 </form></details>
+<div id="results">
 <p class="note">{{.Found}} of {{.Total}} bookmarks{{with .Tag}} with the tag <b>{{.}}</b>{{end}}.{{if gt .Found (len .Rows)}}
 This page shows the first {{len .Rows}}.{{end}}{{if or .Query .Tag}} <a href="/bookmarks">Show all</a>{{end}}</p>
-{{with .Target}}<p>No bookmark matches. Go to <a href="{{.}}">{{.}}</a></p>{{end}}
+{{with .Target}}<p>No bookmark matches. Go to <a href="{{.}}" class="open">{{.}}</a></p>{{end}}
 <ul class="bookmarks">
-{{range .Rows}}<li>{{if .Link}}<a href="{{.Link}}">{{.Title}}</a>{{else}}{{.Title}}{{end}}<br>
+{{range .Rows}}<li>{{if .Link}}<a href="{{.Link}}" class="open">{{.Title}}</a>{{else}}{{.Title}}{{end}}<br>
 <small>{{.Host}}{{range .Tags}} · <a href="/bookmarks?tag={{.}}">{{.}}</a>{{end}} ·
 <a href="/bookmarks/edit?v={{$.Version}}&amp;n={{.N}}">edit</a></small></li>
 {{end}}</ul>
+</div>
 {{with .Tags}}<h2>Tags</h2>
 <p>{{range .}}<a href="/bookmarks?tag={{.Name}}">{{.Name}}</a>&nbsp;({{.N}}) {{end}}</p>{{end}}
+<script src="/search.js" defer></script>
 {{template "foot" .}}{{end}}
 
 {{define "edit"}}{{template "head" .}}

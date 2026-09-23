@@ -41,9 +41,11 @@ sync), nothing is removed: the result is the union of both files.
 After you sign in, the page **/bookmarks** shows your bookmarks in any
 browser, also on a phone. It does what bm does:
 
-- Search as fzf does, with the search of the add-on. Pick a tag. Sort by
-  date, URL, description or tag. Text that no bookmark matches opens as an
-  address, or as a web search.
+- Search as fzf does, with the search of the add-on. The results change
+  while you type, and Enter opens the first result (Ctrl+Enter: in a new
+  tab), as in the add-on. Pick a tag. Sort by date, URL, description or
+  tag. Text that no bookmark matches opens as an address, or as a web
+  search.
 - Add a bookmark. A URL that is a bookmark already is refused.
 - Edit or delete a bookmark.
 - Edit the whole file, as `bm -e` does.
@@ -53,7 +55,9 @@ browser, also on a phone. It does what bm does:
 - Download the file.
 
 Each change goes through the same merge as a sync, so the changes that your
-devices made since the page opened stay. The pages have no script.
+devices made since the page opened stay. The only script is `search.js`,
+for the search while you type: it gets the results from the server. Without
+it, the search form works too.
 
 The pages obey the rules of sync: the email address must be confirmed, and
 with billing on, the account needs its trial or a subscription. The
