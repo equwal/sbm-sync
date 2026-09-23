@@ -47,6 +47,10 @@ page does what bm does:
   tab), as in the add-on. Pick a tag. Sort by date, URL, description or
   tag. Text that no bookmark matches opens as an address, or as a web
   search.
+- Search from the address bar of the browser: type sbm, a space and your
+  words. Pages link to an OpenSearch description, `/opensearch.xml`, and
+  the bookmarks page tells the address to add:
+  `https://sbm.subread.space/bookmarks?q=%s`.
 - Add a bookmark. A URL that is a bookmark already is refused.
 - Edit or delete a bookmark.
 - Edit the whole file, as `bm -e` does.

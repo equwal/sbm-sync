@@ -747,3 +747,17 @@ func (s *server) script(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "text/javascript; charset=utf-8")
 	io.WriteString(w, searchJS)
 }
+
+// openSearch describes the search of the bookmarks in the OpenSearch 1.1
+// format, so that a browser can search them from its address bar.
+func (s *server) openSearch(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/opensearchdescription+xml")
+	fmt.Fprintf(w, `<?xml version="1.0" encoding="UTF-8"?>
+<OpenSearchDescription xmlns="http://a9.com/-/spec/opensearch/1.1/">
+<ShortName>sbm</ShortName>
+<Description>Search your sbm bookmarks</Description>
+<InputEncoding>UTF-8</InputEncoding>
+<Url type="text/html" method="get" template="%s/bookmarks?q={searchTerms}"/>
+</OpenSearchDescription>
+`, html.EscapeString(s.site))
+}

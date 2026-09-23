@@ -179,6 +179,7 @@ func (s *server) routes() http.Handler {
 	m.HandleFunc("POST /bookmarks/import", s.importFile)
 	m.HandleFunc("GET /bookmarks.txt", s.download)
 	m.HandleFunc("GET /search.js", s.script)
+	m.HandleFunc("GET /opensearch.xml", s.openSearch)
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		h := w.Header()
 		// Scripts only from this server: the live search of the bookmark

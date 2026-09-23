@@ -12,6 +12,7 @@
 <meta property="og:image" content="https://sbm.subread.space/og.png">
 <meta name="twitter:card" content="summary_large_image">
 <meta name="theme-color" content="#005577">
+<link rel="search" type="application/opensearchdescription+xml" title="sbm bookmarks" href="/opensearch.xml">
 <style>
 body { max-width: 36em; margin: 2em auto; padding: 0 1em; font: 16px/1.5 sans-serif; color: #222; background: #fff; }
 a { color: #005577; }
@@ -164,6 +165,15 @@ works too. URLs that are bookmarks already are skipped.</p>
 <label>File <input type="file" name="file" required></label>
 <button>Import</button>
 </form></details>
+<details><summary>Search from the address bar</summary>
+<p class="note">Add a search engine to your browser with this address, and
+give it the shortcut sbm:</p>
+<p><code>{{.URL}}/bookmarks?q=%s</code></p>
+<p class="note">Then type sbm, a space and your words in the address bar.
+In Chrome and Edge, add it under Settings, Search engine, Manage search
+engines and site search. Firefox offers to add sbm from the search button of
+the address bar while this page is open.</p>
+</details>
 <div id="results">
 <p class="note">{{.Found}} of {{.Total}} bookmarks{{with .Tag}} with the tag <b>{{.}}</b>{{end}}.{{if gt .Found (len .Rows)}}
 This page shows the first {{len .Rows}}.{{end}}{{if or .Query .Tag}} <a href="/bookmarks">Show all</a>{{end}}</p>

@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"encoding/xml"
 	"io"
 	"mime/multipart"
 	"net/http"
@@ -430,6 +431,43 @@ func TestOtherSiteCannotChangeBookmarks(t *testing.T) {
 	}
 	if got := e.fileOf(tok); got != "https://a.org\tA\t\n" {
 		t.Errorf("another site changed the file: %q", got)
+	}
+}
+
+func TestSearchFromTheAddressBar(t *testing.T) {
+	e := newEnv(t, false)
+	resp, err := http.Get(e.web.URL + "/opensearch.xml")
+	if err != nil {
+		t.Fatal(err)
+	}
+	b, _ := io.ReadAll(resp.Body)
+	resp.Body.Close()
+	var d struct {
+		ShortName string
+		URL       struct {
+			Type     string `xml:"type,attr"`
+			Template string `xml:"template,attr"`
+		} `xml:"Url"`
+	}
+	if err := xml.Unmarshal(b, &d); err != nil {
+		t.Fatalf("the description is not XML: %v\n%s", err, b)
+	}
+	if resp.Header.Get("Content-Type") != "application/opensearchdescription+xml" || d.ShortName != "sbm" ||
+		d.URL.Type != "text/html" || d.URL.Template != e.web.URL+"/bookmarks?q={searchTerms}" {
+		t.Errorf("description: %q %+v", resp.Header.Get("Content-Type"), d)
+	}
+	// Each page tells the browser where the description is.
+	if !strings.Contains(e.body(e.browser(), "/"), `<link rel="search" type="application/opensearchdescription+xml" title="sbm bookmarks" href="/opensearch.xml">`) {
+		t.Error("the home page does not link to the description")
+	}
+	// The bookmarks page tells the address for a browser, and that address
+	// gives the search.
+	c, _, _ := e.account("https://a.org\tA\t\nhttps://b.org\tB\t\n")
+	if !strings.Contains(e.body(c, "/bookmarks"), "<code>"+e.web.URL+"/bookmarks?q=%s</code>") {
+		t.Error("the bookmarks page does not tell the address for the browser")
+	}
+	if got := titles(e.body(c, "/bookmarks?q=b.org")); !slices.Equal(got, []string{"B"}) {
+		t.Errorf("search from the address bar: %q", got)
 	}
 }
 
