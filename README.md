@@ -44,10 +44,14 @@ browser, also on a phone. The home page then has the search box too. The
 page does what bm does:
 
 - Search as fzf does, with the search of the add-on. The results change
-  while you type, and Enter opens the first result (Ctrl+Enter: in a new
-  tab), as in the add-on. Pick a tag. Sort by date, URL, description or
+  while you type, and Enter opens the highlighted result (Ctrl+Enter: in a
+  new tab), as in the add-on. Pick a tag. Sort by date, URL, description or
   tag. Text that no bookmark matches opens as an address, or as a web
   search.
+- Live preview, in a wide window: the page of the highlighted result shows
+  on the right of the list while you search. The arrow keys and the mouse
+  move the highlight. An http page shows with https. Some sites do not let
+  other pages show them, so their preview stays empty.
 - Search from the address bar of the browser: type sbm, a space and your
   words. Pages link to an OpenSearch description, `/opensearch.xml`, and
   the bookmarks page tells the address to add:
@@ -61,9 +65,11 @@ page does what bm does:
 - Download the file.
 
 Each change goes through the same merge as a sync, so the changes that your
-devices made since the page opened stay. The only script is `search.js`,
-for the search while you type: it gets the results from the server. Without
-it, the search form works too.
+devices made since the page opened stay. The only scripts are `search.js`,
+for the search while you type, which gets the results from the server, and
+`preview.js`, for the live preview. Without them, the search form works too.
+The browser loads the page of the preview from its site, in a sandboxed
+frame without a referrer: the server does not fetch it.
 
 The pages obey the rules of sync: the email address must be confirmed, and
 with billing on, the account needs its trial or a subscription. The

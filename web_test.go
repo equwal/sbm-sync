@@ -523,3 +523,45 @@ func TestLiveSearch(t *testing.T) {
 		t.Errorf("GET /search.js: %s %q, %d bytes", resp.Status, resp.Header.Get("Content-Type"), len(b))
 	}
 }
+
+func TestLivePreview(t *testing.T) {
+	e := newEnv(t, false)
+	c, _, _ := e.account("https://a.org\tA\t\n")
+	resp, err := c.Get(e.web.URL + "/bookmarks")
+	if err != nil {
+		t.Fatal(err)
+	}
+	b, _ := io.ReadAll(resp.Body)
+	resp.Body.Close()
+	// The preview shows pages of other sites in a frame, but only https
+	// pages: an http frame in an https page is mixed content. No site may
+	// show this page in a frame.
+	csp := resp.Header.Get("Content-Security-Policy")
+	if !strings.Contains(csp, "; frame-src https:;") || !strings.Contains(csp, "frame-ancestors 'none'") {
+		t.Errorf("Content-Security-Policy: %q", csp)
+	}
+	// The frame runs the scripts of the page, but the page cannot lead this
+	// page away, open windows or send forms, and it gets no referrer. The
+	// script shows the pane.
+	for _, want := range []string{`<section id="preview" hidden>`,
+		`<iframe title="Preview of the page" sandbox="allow-scripts allow-same-origin" referrerpolicy="no-referrer"></iframe>`,
+		`<script src="/preview.js" defer></script>`} {
+		if !strings.Contains(string(b), want) {
+			t.Errorf("the page has no %q", want)
+		}
+	}
+	resp, err = e.browser().Get(e.web.URL + "/preview.js")
+	if err != nil {
+		t.Fatal(err)
+	}
+	b, _ = io.ReadAll(resp.Body)
+	resp.Body.Close()
+	if resp.StatusCode != http.StatusOK || resp.Header.Get("Content-Type") != "text/javascript; charset=utf-8" || string(b) != previewJS {
+		t.Errorf("GET /preview.js: %s %q, %d bytes", resp.Status, resp.Header.Get("Content-Type"), len(b))
+	}
+	// The home page has the search, but no room for a preview.
+	if home := e.body(c, "/"); !strings.Contains(home, `id="search"`) ||
+		strings.Contains(home, `<section id="preview"`) || strings.Contains(home, "/preview.js") {
+		t.Error("the home page must have the search and no preview")
+	}
+}

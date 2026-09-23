@@ -1,6 +1,7 @@
 // Live search for the bookmark pages of sbm Sync: the results change while
-// you type, and Enter opens the first result, as in the sbm add-on.
-// Ctrl+Enter opens it in a new tab. The server does the search: this script
+// you type, and Enter opens the first result, as in the sbm add-on. When
+// preview.js highlights a result, Enter opens that one. Ctrl+Enter opens it
+// in a new tab. The server does the search: this script
 // gets the page of the search and shows its results. Without this script the
 // form still works.
 "use strict";
@@ -57,9 +58,10 @@
       running = update();
     }
     await running;
-    const first = results.querySelector("a.open");
-    if (first === null) form.submit();
-    else if (e.ctrlKey || e.metaKey) window.open(first.href, "_blank", "noopener");
-    else location.assign(first.href);
+    const row = results.querySelector("li.sel");
+    const link = row ? row.querySelector("a.open") : results.querySelector("a.open");
+    if (link === null) form.submit();
+    else if (e.ctrlKey || e.metaKey) window.open(link.href, "_blank", "noopener");
+    else location.assign(link.href);
   });
 })();
