@@ -9,13 +9,14 @@ and the sbm add-on for Firefox and Chrome.
 The demo (80 seconds, also as [MP4](demo/sbm-demo.mp4)): bm adds a bookmark
 in a terminal. The add-on in the browser shows it, and adds the page that it
 shows. After `bm-sync`, bm has that bookmark too. All through
-sbm.subread.space.
+sbmsync.com.
 
 It is one small Go program. It keeps its data in plain files: no database.
 The only dependency is `golang.org/x/crypto` for bcrypt.
 
-The clients use **https://sbm.subread.space** unless you set another
-server. Sync on that server is free. You can also run your own server.
+The clients use **https://sbmsync.com** unless you set another server.
+Sync on that server is free. You can also run your own server. The old
+address, sbm.subread.space, still works for the clients that use it.
 
 ## How sync works
 
@@ -50,7 +51,7 @@ page does what bm does:
 - Search from the address bar of the browser: type sbm, a space and your
   words. Pages link to an OpenSearch description, `/opensearch.xml`, and
   the bookmarks page tells the address to add:
-  `https://sbm.subread.space/bookmarks?q=%s`.
+  `https://sbmsync.com/bookmarks?q=%s`.
 - Add a bookmark. A URL that is a bookmark already is refused.
 - Edit or delete a bookmark.
 - Edit the whole file, as `bm -e` does.
@@ -101,9 +102,9 @@ The add-on opens the Stripe pages in a new tab. After them, Stripe shows
 the page `/done` of the server, which tells the user to go back to the
 add-on.
 
-    curl -d email=me@example.org --data-urlencode password=... https://sbm.subread.space/api/login
+    curl -d email=me@example.org --data-urlencode password=... https://sbmsync.com/api/login
     curl -H "Authorization: Bearer $token" --data-binary @bookmarks \
-        "https://sbm.subread.space/api/sync?base=$version"
+        "https://sbmsync.com/api/sync?base=$version"
 
 ## Run your own server
 

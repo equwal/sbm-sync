@@ -545,6 +545,16 @@ func TestTerms(t *testing.T) {
 	}
 }
 
+// The preview image comes from the address of the server, so that it moves
+// with SBM_URL.
+func TestPreviewImage(t *testing.T) {
+	e := newEnv(t, false)
+	want := `<meta property="og:image" content="` + e.s.site + `/og.png">`
+	if home := e.body(http.DefaultClient, "/"); !strings.Contains(home, want) {
+		t.Errorf("the home page lacks %q", want)
+	}
+}
+
 // api sends a request with the token of a device, as the add-on does, and
 // gives the status and the body of the answer.
 func (e *harness) api(method, token, path string, form url.Values) (int, string) {
