@@ -50,6 +50,11 @@ details { margin: 1em 0; } summary { cursor: pointer; }
 
 {{define "home"}}{{template "head" .}}
 <h1>Your bookmarks, the same everywhere</h1>
+{{if .Active}}<form id="search" method="get" action="/bookmarks">
+<input type="search" name="q" placeholder="Search your bookmarks, or type an address" aria-label="Search your bookmarks" autocomplete="off" autofocus>
+</form>
+<div id="results" data-empty="clear"></div>
+<script src="/search.js" defer></script>{{end}}
 <p><a href="https://github.com/equwal/sbm">sbm</a> keeps your bookmarks in one plain
 text file. sbm Sync keeps that file the same on each of your devices: bm on
 your computers, the sbm app for Android, and the sbm add-on for Firefox and

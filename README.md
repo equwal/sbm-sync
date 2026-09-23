@@ -39,7 +39,8 @@ sync), nothing is removed: the result is the union of both files.
 ## Bookmarks on the web
 
 After you sign in, the page **/bookmarks** shows your bookmarks in any
-browser, also on a phone. It does what bm does:
+browser, also on a phone. The home page then has the search box too. The
+page does what bm does:
 
 - Search as fzf does, with the search of the add-on. The results change
   while you type, and Enter opens the first result (Ctrl+Enter: in a new

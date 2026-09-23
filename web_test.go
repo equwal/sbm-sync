@@ -433,6 +433,26 @@ func TestOtherSiteCannotChangeBookmarks(t *testing.T) {
 	}
 }
 
+func TestSearchOnTheHomePage(t *testing.T) {
+	e := newEnv(t, false)
+	e.withMail()
+	if strings.Contains(e.body(e.browser(), "/"), `id="search"`) {
+		t.Error("the home page shows the search to a visitor who is not signed in")
+	}
+	c := e.signup("me@example.org")
+	if strings.Contains(e.body(c, "/"), `id="search"`) {
+		t.Error("the home page shows the search before the email check")
+	}
+	e.open(e.link())
+	page := e.body(c, "/")
+	for _, want := range []string{`<form id="search" method="get" action="/bookmarks">`,
+		`<div id="results" data-empty="clear"></div>`, `<script src="/search.js" defer></script>`} {
+		if !strings.Contains(page, want) {
+			t.Errorf("the home page has no %q", want)
+		}
+	}
+}
+
 func TestLiveSearch(t *testing.T) {
 	e := newEnv(t, false)
 	c, _, _ := e.account("https://a.org\tA\t\ngemini://b.org\tB\t\n")
