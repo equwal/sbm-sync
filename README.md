@@ -39,11 +39,18 @@ sync), nothing is removed: the result is the union of both files.
 ## Bookmarks on the web
 
 After you sign in, the page **/bookmarks** shows your bookmarks in any
-browser, also on a phone. It does what bm does:
+browser, also on a phone. The home page then has the search box too. The
+page does what bm does:
 
-- Search as fzf does, with the search of the add-on. Pick a tag. Sort by
-  date, URL, description or tag. Text that no bookmark matches opens as an
-  address, or as a web search.
+- Search as fzf does, with the search of the add-on. The results change
+  while you type, and Enter opens the first result (Ctrl+Enter: in a new
+  tab), as in the add-on. Pick a tag. Sort by date, URL, description or
+  tag. Text that no bookmark matches opens as an address, or as a web
+  search.
+- Search from the address bar of the browser: type sbm, a space and your
+  words. Pages link to an OpenSearch description, `/opensearch.xml`, and
+  the bookmarks page tells the address to add:
+  `https://sbm.subread.space/bookmarks?q=%s`.
 - Add a bookmark. A URL that is a bookmark already is refused.
 - Edit or delete a bookmark.
 - Edit the whole file, as `bm -e` does.
@@ -53,7 +60,9 @@ browser, also on a phone. It does what bm does:
 - Download the file.
 
 Each change goes through the same merge as a sync, so the changes that your
-devices made since the page opened stay. The pages have no script.
+devices made since the page opened stay. The only script is `search.js`,
+for the search while you type: it gets the results from the server. Without
+it, the search form works too.
 
 The pages obey the rules of sync: the email address must be confirmed, and
 with billing on, the account needs its trial or a subscription. The

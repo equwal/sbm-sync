@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"encoding/xml"
 	"io"
 	"mime/multipart"
 	"net/http"
@@ -86,7 +87,7 @@ func editForm(t *testing.T, page, title string) url.Values {
 	return nil
 }
 
-var rowTitle = regexp.MustCompile(`<li>(?:<a href="[^"]*">)?([^<]*)`)
+var rowTitle = regexp.MustCompile(`<li>(?:<a href="[^"]*"[^>]*>)?([^<]*)`)
 
 // titles gives the titles of the bookmarks on the page, in their order.
 func titles(page string) []string {
@@ -271,7 +272,7 @@ func TestSearchTagsAndOrders(t *testing.T) {
 	if page := e.body(c, "/bookmarks?q=posix+sh"); !strings.Contains(page, "No bookmark matches.") || !strings.Contains(page, "https://duckduckgo.com/?q=posix") {
 		t.Errorf("no web search for text that no bookmark matches:\n%s", page)
 	}
-	if page := e.body(c, "/bookmarks?q=example.org/x"); !strings.Contains(page, `Go to <a href="https://example.org/x">`) {
+	if page := e.body(c, "/bookmarks?q=example.org/x"); !strings.Contains(page, `Go to <a href="https://example.org/x" class="open">`) {
 		t.Errorf("no link for an address that no bookmark matches:\n%s", page)
 	}
 }
@@ -288,7 +289,7 @@ func TestBookmarkPagesEscapeTheFile(t *testing.T) {
 	if !strings.Contains(page, "&lt;script&gt;alert(2)&lt;/script&gt;") {
 		t.Error("the page does not show the description as text")
 	}
-	if !strings.Contains(page, `<a href="https://www.example.org">No scheme</a>`) {
+	if !strings.Contains(page, `<a href="https://www.example.org" class="open">No scheme</a>`) {
 		t.Error("an address without a scheme does not get https")
 	}
 }
@@ -430,5 +431,95 @@ func TestOtherSiteCannotChangeBookmarks(t *testing.T) {
 	}
 	if got := e.fileOf(tok); got != "https://a.org\tA\t\n" {
 		t.Errorf("another site changed the file: %q", got)
+	}
+}
+
+func TestSearchFromTheAddressBar(t *testing.T) {
+	e := newEnv(t, false)
+	resp, err := http.Get(e.web.URL + "/opensearch.xml")
+	if err != nil {
+		t.Fatal(err)
+	}
+	b, _ := io.ReadAll(resp.Body)
+	resp.Body.Close()
+	var d struct {
+		ShortName string
+		URL       struct {
+			Type     string `xml:"type,attr"`
+			Template string `xml:"template,attr"`
+		} `xml:"Url"`
+	}
+	if err := xml.Unmarshal(b, &d); err != nil {
+		t.Fatalf("the description is not XML: %v\n%s", err, b)
+	}
+	if resp.Header.Get("Content-Type") != "application/opensearchdescription+xml" || d.ShortName != "sbm" ||
+		d.URL.Type != "text/html" || d.URL.Template != e.web.URL+"/bookmarks?q={searchTerms}" {
+		t.Errorf("description: %q %+v", resp.Header.Get("Content-Type"), d)
+	}
+	// Each page tells the browser where the description is.
+	if !strings.Contains(e.body(e.browser(), "/"), `<link rel="search" type="application/opensearchdescription+xml" title="sbm bookmarks" href="/opensearch.xml">`) {
+		t.Error("the home page does not link to the description")
+	}
+	// The bookmarks page tells the address for a browser, and that address
+	// gives the search.
+	c, _, _ := e.account("https://a.org\tA\t\nhttps://b.org\tB\t\n")
+	if !strings.Contains(e.body(c, "/bookmarks"), "<code>"+e.web.URL+"/bookmarks?q=%s</code>") {
+		t.Error("the bookmarks page does not tell the address for the browser")
+	}
+	if got := titles(e.body(c, "/bookmarks?q=b.org")); !slices.Equal(got, []string{"B"}) {
+		t.Errorf("search from the address bar: %q", got)
+	}
+}
+
+func TestSearchOnTheHomePage(t *testing.T) {
+	e := newEnv(t, false)
+	e.withMail()
+	if strings.Contains(e.body(e.browser(), "/"), `id="search"`) {
+		t.Error("the home page shows the search to a visitor who is not signed in")
+	}
+	c := e.signup("me@example.org")
+	if strings.Contains(e.body(c, "/"), `id="search"`) {
+		t.Error("the home page shows the search before the email check")
+	}
+	e.open(e.link())
+	page := e.body(c, "/")
+	for _, want := range []string{`<form id="search" method="get" action="/bookmarks">`,
+		`<div id="results" data-empty="clear"></div>`, `<script src="/search.js" defer></script>`} {
+		if !strings.Contains(page, want) {
+			t.Errorf("the home page has no %q", want)
+		}
+	}
+}
+
+func TestLiveSearch(t *testing.T) {
+	e := newEnv(t, false)
+	c, _, _ := e.account("https://a.org\tA\t\ngemini://b.org\tB\t\n")
+	resp, err := c.Get(e.web.URL + "/bookmarks")
+	if err != nil {
+		t.Fatal(err)
+	}
+	b, _ := io.ReadAll(resp.Body)
+	resp.Body.Close()
+	// Scripts come only from this server, and fetch only from it.
+	csp := resp.Header.Get("Content-Security-Policy")
+	if !strings.Contains(csp, "script-src 'self';") || !strings.Contains(csp, "connect-src 'self';") || strings.Contains(csp, "unsafe-eval") {
+		t.Errorf("Content-Security-Policy: %q", csp)
+	}
+	// The script finds the form, the results, and the links that Enter opens.
+	// A bookmark without a web address has no such link.
+	for _, want := range []string{`<form id="search" `, `<div id="results">`, `<a href="https://a.org" class="open">A</a>`,
+		`<li>B<br>`, `<script src="/search.js" defer></script>`} {
+		if !strings.Contains(string(b), want) {
+			t.Errorf("the page has no %q", want)
+		}
+	}
+	resp, err = e.browser().Get(e.web.URL + "/search.js")
+	if err != nil {
+		t.Fatal(err)
+	}
+	b, _ = io.ReadAll(resp.Body)
+	resp.Body.Close()
+	if resp.StatusCode != http.StatusOK || resp.Header.Get("Content-Type") != "text/javascript; charset=utf-8" || string(b) != searchJS {
+		t.Errorf("GET /search.js: %s %q, %d bytes", resp.Status, resp.Header.Get("Content-Type"), len(b))
 	}
 }
