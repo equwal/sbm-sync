@@ -370,15 +370,8 @@ func (s *Store) sync(a *Account, base, local string) (string, string, error) {
 	if err := os.MkdirAll(dir, 0o700); err != nil {
 		return "", "", err
 	}
-	remote := ""
-	head, err := os.ReadFile(filepath.Join(dir, "HEAD"))
-	if err == nil {
-		b, err := os.ReadFile(filepath.Join(dir, strings.TrimSpace(string(head))))
-		if err != nil {
-			return "", "", err
-		}
-		remote = string(b)
-	} else if !errors.Is(err, fs.ErrNotExist) {
+	remote, _, err := head(dir)
+	if err != nil {
 		return "", "", err
 	}
 	old := ""
@@ -403,6 +396,37 @@ func (s *Store) sync(a *Account, base, local string) (string, string, error) {
 		return "", "", err
 	}
 	return merged, name, prune(dir, name)
+}
+
+// head gives the current version of the file in dir and its name. Without a
+// version, both are "". The caller holds the lock of the account.
+func head(dir string) (string, string, error) {
+	b, err := os.ReadFile(filepath.Join(dir, "HEAD"))
+	if errors.Is(err, fs.ErrNotExist) {
+		return "", "", nil
+	} else if err != nil {
+		return "", "", err
+	}
+	name := strings.TrimSpace(string(b))
+	text, err := os.ReadFile(filepath.Join(dir, name))
+	return string(text), name, err
+}
+
+// read gives the version of the file of the account with the name, or the
+// current version when name is "", and the name of the version.
+func (s *Store) read(a *Account, name string) (string, string, error) {
+	m := s.lock(a.ID)
+	m.Lock()
+	defer m.Unlock()
+	dir := filepath.Join(s.dir, "files", a.ID)
+	if name == "" {
+		return head(dir)
+	}
+	if !hashName.MatchString(name) {
+		return "", "", fs.ErrNotExist
+	}
+	b, err := os.ReadFile(filepath.Join(dir, name))
+	return string(b), name, err
 }
 
 // prune deletes all but the newest versions in dir, and never keep.

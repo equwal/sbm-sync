@@ -20,8 +20,12 @@ label { display: block; }
 input { display: block; width: 100%; box-sizing: border-box; margin: .2em 0 1em; padding: .4em; font: inherit; }
 button { font: inherit; padding: .4em 1em; margin: .2em .5em .2em 0; }
 .error { color: #a00; } .note, footer { color: #555; } footer { margin-top: 3em; font-size: .9em; }
+select { font: inherit; padding: .3em; margin: .2em 0 1em; }
+textarea { display: block; width: 100%; box-sizing: border-box; height: 60vh; margin: .2em 0 1em; font: 13px/1.4 monospace; }
+details { margin: 1em 0; } summary { cursor: pointer; }
+.bookmarks { list-style: none; padding: 0; } .bookmarks li { margin: .8em 0; overflow-wrap: anywhere; } .bookmarks small { color: #555; }
 @media (prefers-color-scheme: dark) {
-  body { background: #111; color: #ddd; } a { color: #4fb3d9; } .note, footer { color: #999; } .error { color: #f77; }
+  body { background: #111; color: #ddd; } a { color: #4fb3d9; } .note, footer, .bookmarks small { color: #999; } .error { color: #f77; }
 }
 </style>
 </head>
@@ -47,9 +51,9 @@ button { font: inherit; padding: .4em 1em; margin: .2em .5em .2em 0; }
 <p><a href="https://github.com/equwal/sbm">sbm</a> keeps your bookmarks in one plain
 text file. sbm Sync keeps that file the same on each of your devices: bm on
 your computers, the sbm app for Android, and the sbm add-on for Firefox and
-Chrome.</p>
+Chrome. You can also use your bookmarks on this site, in any browser.</p>
 {{if .Billing}}<p>Free for {{.TrialDays}} days. Then {{.Year}} or {{.Month}}. Cancel at any time.</p>{{end}}
-<p>{{if .Email}}<a href="/account">Your account</a>{{else}}<a href="/signup">Create an account</a> or <a href="/login">sign in</a>.{{end}}</p>
+<p>{{if .Email}}{{if .Active}}<a href="/bookmarks">Your bookmarks</a> · {{end}}<a href="/account">Your account</a>{{else}}<a href="/signup">Create an account</a> or <a href="/login">sign in</a>.{{end}}</p>
 {{with .Teams}}<h2>Teams</h2>
 <p>Coming: bookmarks for teams. The members of a team share one bookmark
 file, and sync it on each of their devices. Pre-order the founding plan: <a href="{{.}}">for up to 10 people</a>{{with $.TeamsLarge}},
@@ -84,6 +88,7 @@ or <a href="{{.}}">for 11 people or more</a>{{end}}.</p>{{end}}
 {{define "account"}}{{template "head" .}}
 <h1>Your account</h1>
 <p>Signed in as {{.Email}}.</p>
+{{if .Active}}<p><a href="/bookmarks"><b>Open your bookmarks</b></a></p>{{end}}
 {{with .Error}}<p class="error">{{.}}</p>{{end}}
 {{if .Unconfirmed}}<p><b>Confirm your email address.</b> Open the link in the
 email that this server sent to {{.Email}}. Sync starts after that.</p>
@@ -113,6 +118,89 @@ once.{{if .Customer}} It also ends your subscription.{{end}} Your devices keep
 their bookmark files.</p>
 <label>Password <input type="password" name="password" required autocomplete="current-password"></label>
 <button>Delete my account</button>
+</form>
+{{template "foot" .}}{{end}}
+
+{{define "nav"}}<p class="note"><a href="/bookmarks">Bookmarks</a> ·
+<a href="/bookmarks/file">Edit the file</a> ·
+<a href="/bookmarks.txt">Download</a> ·
+<a href="/account">Account</a></p>{{end}}
+
+{{define "bookmarks"}}{{template "head" .}}
+{{template "nav"}}
+<h1>Your bookmarks</h1>
+{{with .Error}}<p class="error">{{.}}</p>{{end}}
+{{with .Done}}<p><b>{{.}}</b></p>{{end}}
+<form method="get" action="/bookmarks">
+<input type="search" name="q" value="{{.Query}}" placeholder="Search, or type an address" aria-label="Search">
+{{with .Tag}}<input type="hidden" name="tag" value="{{.}}">{{end}}
+<label>Order <select name="sort">
+<option value="recent"{{if eq .Sort "recent"}} selected{{end}}>newest first</option>
+<option value="url"{{if eq .Sort "url"}} selected{{end}}>URL</option>
+<option value="desc"{{if eq .Sort "desc"}} selected{{end}}>description</option>
+<option value="tag"{{if eq .Sort "tag"}} selected{{end}}>tag</option>
+</select></label>
+<button>Search</button>
+</form>
+<details{{if eq .Open "add"}} open{{end}}><summary>Add a bookmark</summary>
+<form method="post" action="/bookmarks/add">
+<label>URL <input name="url" value="{{.Form.URL}}" required></label>
+<label>Description <input name="desc" value="{{.Form.Desc}}"></label>
+<label>Tags, with spaces between them <input name="tags" value="{{.Form.Tags}}" autocomplete="off"></label>
+<button>Add</button>
+</form></details>
+<details{{if eq .Open "import"}} open{{end}}><summary>Import bookmarks</summary>
+<form method="post" action="/bookmarks/import" enctype="multipart/form-data">
+<p class="note">Export the bookmarks of your browser to an HTML file, then
+import that file here. Folders become tags. A file of sbm bookmark lines
+works too. URLs that are bookmarks already are skipped.</p>
+<label>File <input type="file" name="file" required></label>
+<button>Import</button>
+</form></details>
+<p class="note">{{.Found}} of {{.Total}} bookmarks{{with .Tag}} with the tag <b>{{.}}</b>{{end}}.{{if gt .Found (len .Rows)}}
+This page shows the first {{len .Rows}}.{{end}}{{if or .Query .Tag}} <a href="/bookmarks">Show all</a>{{end}}</p>
+{{with .Target}}<p>No bookmark matches. Go to <a href="{{.}}">{{.}}</a></p>{{end}}
+<ul class="bookmarks">
+{{range .Rows}}<li>{{if .Link}}<a href="{{.Link}}">{{.Title}}</a>{{else}}{{.Title}}{{end}}<br>
+<small>{{.Host}}{{range .Tags}} · <a href="/bookmarks?tag={{.}}">{{.}}</a>{{end}} ·
+<a href="/bookmarks/edit?v={{$.Version}}&amp;n={{.N}}">edit</a></small></li>
+{{end}}</ul>
+{{with .Tags}}<h2>Tags</h2>
+<p>{{range .}}<a href="/bookmarks?tag={{.Name}}">{{.Name}}</a>&nbsp;({{.N}}) {{end}}</p>{{end}}
+{{template "foot" .}}{{end}}
+
+{{define "edit"}}{{template "head" .}}
+{{template "nav"}}
+<h1>Edit a bookmark</h1>
+{{with .Error}}<p class="error">{{.}}</p>{{end}}
+<form method="post" action="/bookmarks/edit">
+<input type="hidden" name="v" value="{{.Version}}">
+<input type="hidden" name="n" value="{{.N}}">
+<label>URL <input name="url" value="{{.Form.URL}}" required></label>
+<label>Description <input name="desc" value="{{.Form.Desc}}"></label>
+<label>Tags, with spaces between them <input name="tags" value="{{.Form.Tags}}" autocomplete="off"></label>
+<button name="do" value="save">Save</button>
+<button name="do" value="delete" formnovalidate>Delete</button>
+<a href="/bookmarks">Cancel</a>
+</form>
+{{template "foot" .}}{{end}}
+
+{{define "file"}}{{template "head" .}}
+{{template "nav"}}
+<h1>Edit the file</h1>
+{{with .Error}}<p class="error">{{.}}</p>{{end}}
+<p class="note">One bookmark on each line: the URL, a tab, the description, a
+tab, and the tags with spaces between them. Lines that start with # are
+comments. A browser does not type a tab in this box: paste one, or use
+<a href="/bookmarks">Add a bookmark</a>.</p>
+<p class="note">When you save, the server merges your changes with the
+changes of your other devices, as a sync does. Lines that you remove go, new
+lines come at the end, and the other lines keep their order.</p>
+<form method="post" action="/bookmarks/file">
+<input type="hidden" name="base" value="{{.Version}}">
+<textarea name="text" spellcheck="false" aria-label="The bookmark file">
+{{.Text}}</textarea>
+<button>Save</button> <a href="/bookmarks">Cancel</a>
 </form>
 {{template "foot" .}}{{end}}
 
