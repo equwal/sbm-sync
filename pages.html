@@ -25,18 +25,8 @@ select { font: inherit; padding: .3em; margin: .2em 0 1em; }
 textarea { display: block; width: 100%; box-sizing: border-box; height: 60vh; margin: .2em 0 1em; font: 13px/1.4 monospace; }
 details { margin: 1em 0; } summary { cursor: pointer; }
 .bookmarks { list-style: none; padding: 0; } .bookmarks li { margin: .8em 0; overflow-wrap: anywhere; } .bookmarks small { color: #555; }
-.bookmarks li.sel { background: #e3eef3; box-shadow: 0 0 0 .3em #e3eef3; }
-/* The live preview needs a wide window. There it is on the right of the list. */
-#preview { display: none; }
-#preview p { margin: 0 0 .3em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-#preview iframe { flex: 1; width: 100%; box-sizing: border-box; border: 1px solid #ccc; background: #fff; }
-@media (min-width: 64em) {
-  body:has(#preview) { margin-left: 2em; }
-  #preview:not([hidden]) { display: flex; flex-direction: column; position: fixed; top: 1em; bottom: 1em; left: 41em; right: 1em; }
-}
 @media (prefers-color-scheme: dark) {
   body { background: #111; color: #ddd; } a { color: #4fb3d9; } .note, footer, .bookmarks small { color: #999; } .error { color: #f77; }
-  .bookmarks li.sel { background: #1e2d34; box-shadow: 0 0 0 .3em #1e2d34; } #preview iframe { border-color: #444; }
 }
 </style>
 </head>
@@ -160,10 +150,6 @@ their bookmark files.</p>
 </select></label>
 <button>Search</button>
 </form>
-<section id="preview" hidden>
-<p class="note">Type a search, or point at a bookmark, to see its page here.</p>
-<iframe title="Preview of the page" sandbox="allow-scripts allow-same-origin" referrerpolicy="no-referrer"></iframe>
-</section>
 <details{{if eq .Open "add"}} open{{end}}><summary>Add a bookmark</summary>
 <form method="post" action="/bookmarks/add">
 <label>URL <input name="url" value="{{.Form.URL}}" required></label>
@@ -201,7 +187,6 @@ This page shows the first {{len .Rows}}.{{end}}{{if or .Query .Tag}} <a href="/b
 {{with .Tags}}<h2>Tags</h2>
 <p>{{range .}}<a href="/bookmarks?tag={{.Name}}">{{.Name}}</a>&nbsp;({{.N}}) {{end}}</p>{{end}}
 <script src="/search.js" defer></script>
-<script src="/preview.js" defer></script>
 {{template "foot" .}}{{end}}
 
 {{define "edit"}}{{template "head" .}}
@@ -303,12 +288,6 @@ server deletes the account and all versions of your bookmark file at once.</p>
 <p>They keep your bookmarks on your device. They send them only to the sync
 server that you sign in to, and only after you sign in. Without an account,
 no data leaves your device.</p>
-<h2>The live preview</h2>
-<p>The bookmark page of this server, the app and the add-on show the page of
-the highlighted bookmark while you search. Your browser, or the app, loads
-that page from its own site, as a visit does, without a referrer. This
-server does not load it and does not learn which pages you preview. The app
-and the add-on can turn the preview off.</p>
 {{with .Contact}}<h2>Contact</h2>
 <p><a href="mailto:{{.}}">{{.}}</a></p>{{end}}
 {{template "foot" .}}{{end}}

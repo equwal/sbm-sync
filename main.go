@@ -179,14 +179,12 @@ func (s *server) routes() http.Handler {
 	m.HandleFunc("POST /bookmarks/import", s.importFile)
 	m.HandleFunc("GET /bookmarks.txt", s.download)
 	m.HandleFunc("GET /search.js", s.script)
-	m.HandleFunc("GET /preview.js", s.previewScript)
 	m.HandleFunc("GET /opensearch.xml", s.openSearch)
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		h := w.Header()
 		// Scripts only from this server: the live search of the bookmark
-		// pages gets its results with fetch. Frames only with https pages:
-		// the live preview shows the page of a bookmark.
-		h.Set("Content-Security-Policy", "default-src 'none'; script-src 'self'; connect-src 'self'; frame-src https:; style-src 'unsafe-inline'; "+
+		// pages gets its results with fetch.
+		h.Set("Content-Security-Policy", "default-src 'none'; script-src 'self'; connect-src 'self'; style-src 'unsafe-inline'; "+
 			"form-action 'self' https://checkout.stripe.com https://billing.stripe.com; "+
 			"frame-ancestors 'none'; base-uri 'none'")
 		h.Set("Referrer-Policy", "same-origin")

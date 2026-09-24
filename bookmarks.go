@@ -40,12 +40,6 @@ var (
 //go:embed search.js
 var searchJS string
 
-// previewJS is the live preview of the list page: the page of the
-// highlighted bookmark in a frame.
-//
-//go:embed preview.js
-var previewJS string
-
 // sentence gives the text of an error as a sentence for a page.
 func sentence(err error) string {
 	return strings.ToUpper(err.Error()[:1]) + err.Error()[1:] + "."
@@ -752,12 +746,6 @@ func (s *server) download(w http.ResponseWriter, r *http.Request) {
 func (s *server) script(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "text/javascript; charset=utf-8")
 	io.WriteString(w, searchJS)
-}
-
-// previewScript gives the live preview of the list page.
-func (s *server) previewScript(w http.ResponseWriter, r *http.Request) {
-	w.Header().Set("Content-Type", "text/javascript; charset=utf-8")
-	io.WriteString(w, previewJS)
 }
 
 // openSearch describes the search of the bookmarks in the OpenSearch 1.1
