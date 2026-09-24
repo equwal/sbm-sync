@@ -555,6 +555,18 @@ func TestPreviewImage(t *testing.T) {
 	}
 }
 
+// The home page states what the server does with the data, and that the
+// operator can read it. A visitor must see this before signing up.
+func TestHomePrivacy(t *testing.T) {
+	e := newEnv(t, false)
+	home := e.body(http.DefaultClient, "/")
+	for _, want := range []string{"No ads, no analytics and no trackers", "The operator of the server", `<a href="/privacy">privacy policy</a>`} {
+		if !strings.Contains(home, want) {
+			t.Errorf("the home page lacks %q", want)
+		}
+	}
+}
+
 // api sends a request with the token of a device, as the add-on does, and
 // gives the status and the body of the answer.
 func (e *harness) api(method, token, path string, form url.Values) (int, string) {

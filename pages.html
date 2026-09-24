@@ -67,8 +67,18 @@ Chrome. You can also use your bookmarks on this site, in any browser.</p>
 file, and sync it on each of their devices. Pre-order the founding plan: <a href="{{.}}">for up to 10 people</a>{{with $.TeamsLarge}},
 or <a href="{{.}}">for 11 people or more</a>{{end}}.</p>{{end}}
 {{template "support" .}}
-<p class="note">sbm Sync is free software under the AGPL-3.0. You can
-<a href="https://github.com/equwal/sbm-sync">run your own server</a>.</p>
+<h2 id="privacy">Your bookmarks stay yours</h2>
+<ul>
+<li>No ads, no analytics and no trackers. The only cookie keeps you signed in.</li>
+<li>We do not sell or share your data.</li>
+<li>Your bookmarks are one plain text file. You can read it, copy it and leave at any time.</li>
+<li>You can delete your account and all copies on the server at once.</li>
+<li>The source code is open. Anyone can check what the server does.</li>
+</ul>
+<p>The server does not encrypt your bookmark file. The operator of the server
+can read it. If that is not acceptable, <a href="https://github.com/equwal/sbm-sync">run
+your own server</a>. See the <a href="/privacy">privacy policy</a>.</p>
+<p class="note">sbm Sync is free software under the AGPL-3.0.</p>
 {{template "foot" .}}{{end}}
 
 {{define "signup"}}{{template "head" .}}
