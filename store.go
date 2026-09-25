@@ -36,15 +36,16 @@ var (
 
 // Account is one user. The file of the user is in files/<ID>.
 type Account struct {
-	ID       string    `json:"id"`
-	Email    string    `json:"email"`
-	Hash     string    `json:"hash"` // bcrypt hash of the password
-	Created  time.Time `json:"created"`
-	Tokens   []string  `json:"tokens"` // SHA-256 of each sign-in token
-	Customer string    `json:"customer,omitempty"`
-	Status   string    `json:"status,omitempty"`    // of the Stripe subscription
-	StatusAt int64     `json:"status_at,omitempty"` // time of the Stripe event that set Status
-	Verify   string    `json:"verify,omitempty"`    // SHA-256 of the code that confirms the email; empty when confirmed
+	ID       string       `json:"id"`
+	Email    string       `json:"email"`
+	Hash     string       `json:"hash"` // bcrypt hash of the password
+	Created  time.Time    `json:"created"`
+	Tokens   []string     `json:"tokens"` // SHA-256 of each sign-in token
+	Customer string       `json:"customer,omitempty"`
+	Status   string       `json:"status,omitempty"`    // of the Stripe subscription
+	StatusAt int64        `json:"status_at,omitempty"` // time of the Stripe event that set Status
+	Verify   string       `json:"verify,omitempty"`    // SHA-256 of the code that confirms the email; empty when confirmed
+	Feed     feedSettings `json:"feed,omitzero"`       // the feed choices, see feed.go
 }
 
 // Store keeps the accounts in one JSON file, accounts.json, and the versions
@@ -337,7 +338,7 @@ func (s *Store) lock(id string) *sync.Mutex {
 	return m
 }
 
-// remove deletes the account and all versions of its file.
+// remove deletes the account, all versions of its file and its feeds.
 func (s *Store) remove(a *Account) error {
 	m := s.lock(a.ID)
 	m.Lock()
@@ -353,7 +354,10 @@ func (s *Store) remove(a *Account) error {
 	if err != nil {
 		return err
 	}
-	return os.RemoveAll(filepath.Join(s.dir, "files", a.ID))
+	if err := os.RemoveAll(filepath.Join(s.dir, "files", a.ID)); err != nil {
+		return err
+	}
+	return os.RemoveAll(s.feedDir(a.ID))
 }
 
 // sync merges the file that a device sends into the current version, keeps

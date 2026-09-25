@@ -25,6 +25,8 @@ select { font: inherit; padding: .3em; margin: .2em 0 1em; }
 textarea { display: block; width: 100%; box-sizing: border-box; height: 60vh; margin: .2em 0 1em; font: 13px/1.4 monospace; }
 details { margin: 1em 0; } summary { cursor: pointer; }
 .bookmarks { list-style: none; padding: 0; } .bookmarks li { margin: .8em 0; overflow-wrap: anywhere; } .bookmarks small { color: #555; }
+.bookmarks form { display: inline; } .bookmarks form button { padding: .1em .5em; margin: 0; font-size: .9em; }
+.check { display: inline; width: auto; margin: 0 .4em 0 0; } pre { overflow-x: auto; }
 @media (prefers-color-scheme: dark) {
   body { background: #111; color: #ddd; } a { color: #4fb3d9; } .note, footer, .bookmarks small { color: #999; } .error { color: #f77; }
 }
@@ -61,7 +63,10 @@ text file. sbm Sync keeps that file the same on each of your devices: bm on
 your computers, the sbm app for Android, and the sbm add-on for Firefox and
 Chrome. You can also use your bookmarks on this site, in any browser.</p>
 {{if .Billing}}<p>Free for {{.TrialDays}} days. Then {{.Year}} or {{.Month}}. Cancel at any time.</p>{{end}}
-<p>{{if .Email}}{{if .Active}}<a href="/bookmarks">Your bookmarks</a> · {{end}}<a href="/account">Your account</a>{{else}}<a href="/signup">Create an account</a> or <a href="/login">sign in</a>.{{end}}</p>
+<p>{{if .Email}}{{if .Active}}<a href="/bookmarks">Your bookmarks</a> · <a href="/feed">Your feed</a> · {{end}}<a href="/account">Your account</a>{{else}}<a href="/signup">Create an account</a> or <a href="/login">sign in</a>.{{end}}</p>
+<p>The <a href="/feed">feed page</a> follows RSS and Atom feeds for you, and can
+look through your bookmarks for feeds. Read it here, or with the sfeed tools
+in a terminal.</p>
 {{with .Teams}}<h2>Teams</h2>
 <p>Coming: bookmarks for teams. The members of a team share one bookmark
 file, and sync it on each of their devices. Pre-order the founding plan: <a href="{{.}}">for up to 10 people</a>{{with $.TeamsLarge}},
@@ -106,7 +111,7 @@ your own server</a>. See the <a href="/privacy">privacy policy</a>.</p>
 {{define "account"}}{{template "head" .}}
 <h1>Your account</h1>
 <p>Signed in as {{.Email}}.</p>
-{{if .Active}}<p><a href="/bookmarks"><b>Open your bookmarks</b></a></p>{{end}}
+{{if .Active}}<p><a href="/bookmarks"><b>Open your bookmarks</b></a> · <a href="/feed">Your feed</a></p>{{end}}
 {{with .Error}}<p class="error">{{.}}</p>{{end}}
 {{if .Unconfirmed}}<p><b>Confirm your email address.</b> Open the link in the
 email that this server sent to {{.Email}}. Sync starts after that.</p>
@@ -142,7 +147,55 @@ their bookmark files.</p>
 {{define "nav"}}<p class="note"><a href="/bookmarks">Bookmarks</a> ·
 <a href="/bookmarks/file">Edit the file</a> ·
 <a href="/bookmarks.txt">Download</a> ·
+<a href="/feed">Feed</a> ·
 <a href="/account">Account</a></p>{{end}}
+
+{{define "feed"}}{{template "head" .}}
+{{template "nav"}}
+<h1>Your feed</h1>
+{{with .Error}}<p class="error">{{.}}</p>{{end}}
+{{with .Done}}<p><b>{{.}}</b></p>{{end}}
+{{if not .Feeds}}<p>Follow a feed: type the address of an RSS or Atom feed
+below, or turn on Explore in the settings, and the server looks through your
+bookmarks for feeds. The server fetches new items every 30 minutes.</p>{{end}}
+<details{{if eq .Open "add"}} open{{end}}><summary>Follow a feed</summary>
+<form method="post" action="/feed/add">
+<label>Feed URL <input name="url" value="{{.Form.URL}}" placeholder="https://example.org/rss.xml" required></label>
+<label>Name <input name="name" value="{{.Form.Name}}"></label>
+<button>Follow</button>
+</form></details>
+<details><summary>Settings</summary>
+<form method="post" action="/feed/settings">
+<label><input type="checkbox" class="check" name="newtab"{{if .Settings.NewTab}} checked{{end}}>Open links in a new tab</label>
+{{if .HasMail}}<label><input type="checkbox" class="check" name="mail"{{if .Settings.Mail}} checked{{end}}>Send me the new items by email, once a day</label>{{end}}
+<label><input type="checkbox" class="check" name="explore"{{if .Settings.Explore}} checked{{end}}>Explore: look through my bookmarks for feeds</label>
+<button>Save</button>
+</form></details>
+<details><summary>Read the feed in a terminal</summary>
+<p class="note">The items come in the <a href="https://codemadness.org/sfeed.html">sfeed</a>
+format, newest first, with the token of a device (<code>bm-sync login</code>
+keeps one in <code>~/.config/sbm/sync</code>):</p>
+<pre>curl -H "Authorization: Bearer $token" {{.URL}}/api/feed | sfeed_plain</pre>
+<p class="note"><code>{{.URL}}/api/feeds</code> gives the feeds that you follow, one on each line: the URL, a tab and the name.</p>
+</details>
+<p class="note">{{.Total}} items{{with .FilterName}} from <b>{{.}}</b>{{end}}.{{if .Filter}} <a href="/feed">All feeds</a>{{end}}</p>
+<ul class="bookmarks">
+{{range .Items}}<li>{{if .Link}}<a href="{{.Link}}"{{if $.Settings.NewTab}} target="_blank" rel="noopener"{{end}}>{{.Title}}</a>{{else}}{{.Title}}{{end}}<br>
+<small><a href="/feed?feed={{.File}}">{{.Feed}}</a>{{if not .Time.IsZero}} · {{.Time.Format "2006-01-02 15:04"}}{{end}}{{with .Author}} · {{.}}{{end}}</small></li>
+{{end}}</ul>
+{{if .Next}}<p><a href="/feed?start={{.Next}}{{with .Filter}}&amp;feed={{.}}{{end}}">Older items</a></p>{{end}}
+{{with .Feeds}}<h2>Feeds you follow</h2>
+<ul class="bookmarks">
+{{range .}}<li><a href="/feed?feed={{.File}}">{{.Name}}</a> <small>{{.URL}}</small>
+<form method="post" action="/feed/delete"><input type="hidden" name="url" value="{{.URL}}"><button>Unfollow</button></form></li>
+{{end}}</ul>{{end}}
+{{if .Settings.Explore}}<h2>Explore</h2>
+<p class="note">The server looked at {{.Checked}} of your {{.Bookmarks}} bookmarked pages for feeds, 20 more with each update.{{if not .Suggestions}} No new feed to follow yet.{{end}}</p>
+{{with .Suggestions}}<ul class="bookmarks">
+{{range .}}<li>{{.URL}}<br><small>on {{.Page}}</small>
+<form method="post" action="/feed/add"><input type="hidden" name="url" value="{{.URL}}"><input type="hidden" name="name" value="{{.Name}}"><button>Follow</button></form></li>
+{{end}}</ul>{{end}}{{end}}
+{{template "foot" .}}{{end}}
 
 {{define "bookmarks"}}{{template "head" .}}
 {{template "nav"}}
@@ -283,6 +336,9 @@ When this server checks email addresses, it also sends you an email with a link 
 <li>Your bookmark file, the last 50 versions that your devices sent: to sync your devices.</li>
 <li>A hash of the sign-in token of each device: to know your devices.</li>
 <li>When you subscribe: your Stripe customer ID and the state of your subscription: to bill you.</li>
+<li>When you follow feeds: the addresses of the feeds, the items that the server fetched from them, and
+the addresses of the feeds that the server found on your bookmarked pages when you asked it to look:
+to show you the items, and to send them to you by email once a day when you asked for that.</li>
 </ul>
 <p>The server does not sell or share this data, and does not use it for ads.
 There are no analytics and no trackers. The only cookie keeps you signed in.</p>

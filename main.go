@@ -51,6 +51,8 @@ type server struct {
 	// mail sends an email. It is nil when the server has no SMTP server:
 	// then accounts need no email check.
 	mail func(to, subject, body string) error
+	// feeds are the programs of the feed job, see feedjob.go.
+	feeds feedTools
 }
 
 func main() {
@@ -114,6 +116,14 @@ func main() {
 			User: os.Getenv("SBM_SMTP_USER"), Password: os.Getenv("SBM_SMTP_PASSWORD"),
 			From: from, Hello: u.Hostname()}
 		s.mail = m.send
+	}
+	if len(os.Args) > 1 {
+		if os.Args[1] != "feed" {
+			log.Fatalf("unknown command %q: the one command is feed", os.Args[1])
+		}
+		s.feeds = execTools()
+		s.runFeeds()
+		return
 	}
 	addr := env("SBM_ADDR", "127.0.0.1:8750")
 	log.Printf("sbm-sync on %s for %s, billing %v, email check %v", addr, site, s.stripe != nil, s.mail != nil)
@@ -180,6 +190,12 @@ func (s *server) routes() http.Handler {
 	m.HandleFunc("GET /bookmarks.txt", s.download)
 	m.HandleFunc("GET /search.js", s.script)
 	m.HandleFunc("GET /opensearch.xml", s.openSearch)
+	m.HandleFunc("GET /feed", s.feed)
+	m.HandleFunc("POST /feed/add", s.followFeed)
+	m.HandleFunc("POST /feed/delete", s.unfollowFeed)
+	m.HandleFunc("POST /feed/settings", s.saveFeedSettings)
+	m.HandleFunc("GET /api/feed", s.apiFeed)
+	m.HandleFunc("GET /api/feeds", s.apiFeeds)
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		h := w.Header()
 		// Scripts only from this server: the live search of the bookmark
@@ -664,17 +680,8 @@ func (s *server) apiLogout(w http.ResponseWriter, r *http.Request) {
 // name of its version in the Sbm-Version header. The device writes the file
 // and sends that name as base next time.
 func (s *server) sync(w http.ResponseWriter, r *http.Request) {
-	u := s.apiUser(r)
+	u := s.apiOwner(w, r)
 	if u == nil {
-		http.Error(w, "not signed in: sign in again", http.StatusUnauthorized)
-		return
-	}
-	if !s.verified(s.store.view(u)) {
-		http.Error(w, "confirm your email address first: open the link in the email from sbm Sync, or see "+s.site+"/account", http.StatusForbidden)
-		return
-	}
-	if !s.active(s.store.view(u)) {
-		http.Error(w, "sbm Sync is paused for this account: see "+s.site+"/account", http.StatusPaymentRequired)
 		return
 	}
 	base := r.URL.Query().Get("base")
