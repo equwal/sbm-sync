@@ -85,6 +85,10 @@ It uses [sfeed](https://codemadness.org/sfeed.html) on the server:
 - Explore: turn it on, and the server looks through your bookmarked pages
   for feeds with `sfeed_web`, 20 pages with each update, and offers what it
   finds.
+- Share: each feed has a share link, and the list has one for all feeds
+  (`/feed/follow?url=...&name=...`). An account that opens the link gets a
+  button that follows the feeds. A visitor is asked to sign in or to create
+  an account, and comes back to the link after that.
 - Digest: the server sends you the new items by email once a day, in the
   form of `sfeed_plain`, unless you turn that off in the settings of the
   page. The first day sends nothing, so that you do not get the whole

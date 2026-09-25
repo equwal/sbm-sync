@@ -42,7 +42,11 @@ const (
 	maxFeedURL  = 2048 // bytes in the URL of a feed
 	maxFeedName = 100  // characters in the name of a feed
 	maxFileName = 40   // characters in the file name of a feed, before a number
+	maxShare    = 50   // feeds in one share link
 	itemsOnPage = 100
+	// nextCookie keeps the share page that a visitor came from, so that the
+	// browser goes back to it after the sign-in or the email check.
+	nextCookie = "sbm_next"
 )
 
 var (
@@ -65,6 +69,47 @@ type feedSettings struct {
 // feed under items/, and the name that sfeed_update knows the feed by.
 type Feed struct {
 	URL, Name, File string
+}
+
+// Share gives the share link of the feed: the page that follows it.
+func (f Feed) Share() string {
+	return shareLink([]Feed{f})
+}
+
+// shareLink gives the address of the page that follows the feeds, for
+// anyone with the link. The first maxShare feeds go in.
+func shareLink(feeds []Feed) string {
+	v := url.Values{}
+	for i, f := range feeds {
+		if i >= maxShare {
+			break
+		}
+		v.Add("url", f.URL)
+		v.Add("name", f.Name)
+	}
+	return "/feed/follow?" + v.Encode()
+}
+
+// sharedFeeds gives the feeds of a share link: the url and name fields, in
+// pairs. The values that are not feed addresses come back in bad.
+func sharedFeeds(q url.Values) (feeds []Feed, bad []string) {
+	names := q["name"]
+	for i, u := range q["url"] {
+		if i >= maxShare {
+			break
+		}
+		addr, err := feedURL(u)
+		if err != nil {
+			bad = append(bad, u)
+			continue
+		}
+		name := ""
+		if i < len(names) {
+			name = names[i]
+		}
+		feeds = append(feeds, Feed{URL: addr, Name: feedName(name, addr)})
+	}
+	return feeds, bad
 }
 
 // feedURL checks the URL of a feed. It takes only http and https addresses
@@ -363,6 +408,7 @@ func (s *server) suggestions(a *Account, feeds []Feed) ([]suggestion, int, int, 
 type feedPage struct {
 	page
 	Feeds       []Feed
+	ShareAll    string // the share link of all feeds
 	Items       []Item
 	Start, Next int    // the first item on the page, and the start of the next page, or 0
 	Total       int    // items that match
@@ -394,6 +440,7 @@ func (s *server) feedData(a *Account, filter string, start int) (feedPage, error
 		return p, err
 	}
 	p.Feeds = parseFeeds(text)
+	p.ShareAll = shareLink(p.Feeds)
 	items := s.feedItems(a, p.Feeds)
 	if filter != "" {
 		items = slices.DeleteFunc(items, func(it Item) bool { return it.File != filter })
@@ -432,7 +479,143 @@ func (s *server) feed(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	p.Done = feedDone[q.Get("done")]
+	if q.Get("done") == "followed" {
+		added, _ := strconv.Atoi(q.Get("added"))
+		known, _ := strconv.Atoi(q.Get("known"))
+		p.Done = fmt.Sprintf("You follow %d new feeds. %d were in your list already.", added, known)
+	}
 	s.render(w, http.StatusOK, "feed", p)
+}
+
+// ---- share links ----
+
+// setNext keeps path in the next cookie, or removes the cookie when path
+// is "".
+func (s *server) setNext(w http.ResponseWriter, path string) {
+	age := 3600
+	if path == "" {
+		age = -1
+	}
+	http.SetCookie(w, &http.Cookie{Name: nextCookie, Value: path, Path: "/", MaxAge: age,
+		HttpOnly: true, Secure: s.secure, SameSite: http.SameSiteLaxMode})
+}
+
+// next gives the page to go to after a sign-in: the share page of the next
+// cookie, or fallback. Only a share page counts, so the cookie cannot send
+// the browser anywhere else.
+func (s *server) next(r *http.Request, fallback string) string {
+	if c, err := r.Cookie(nextCookie); err == nil && strings.HasPrefix(c.Value, "/feed/follow?") {
+		return c.Value
+	}
+	return fallback
+}
+
+// sharedFeed is a feed of a share link on the follow page.
+type sharedFeed struct {
+	Feed
+	Known bool // the account follows the feed already
+}
+
+type followPage struct {
+	page
+	SignedIn bool
+	Feeds    []sharedFeed
+	Bad      []string // values of the link that are not feed addresses
+	New      int      // feeds that the account does not follow yet
+}
+
+// followPage shows the feeds of a share link. A visitor is asked to sign
+// in or to create an account, and comes back here after that. An account
+// gets a button that follows the feeds.
+func (s *server) follow(w http.ResponseWriter, r *http.Request) {
+	feeds, bad := sharedFeeds(r.URL.Query())
+	p := followPage{page: s.page("Follow feeds"), Bad: bad}
+	for _, f := range feeds {
+		p.Feeds = append(p.Feeds, sharedFeed{Feed: f})
+	}
+	u := s.user(r)
+	if u == nil {
+		s.setNext(w, r.URL.RequestURI())
+		s.render(w, http.StatusOK, "follow", p)
+		return
+	}
+	if a := s.store.view(u); !s.verified(a) || !s.active(a) {
+		s.setNext(w, r.URL.RequestURI())
+		http.Redirect(w, r, "/account", http.StatusSeeOther)
+		return
+	}
+	s.setNext(w, "")
+	text, err := s.store.readFeeds(u)
+	if err != nil {
+		s.fail(w, err)
+		return
+	}
+	known := map[string]bool{}
+	for _, f := range parseFeeds(text) {
+		known[norm(f.URL)] = true
+	}
+	p.SignedIn = true
+	for i := range p.Feeds {
+		p.Feeds[i].Known = known[norm(p.Feeds[i].URL)]
+		if !p.Feeds[i].Known {
+			p.New++
+		}
+	}
+	s.render(w, http.StatusOK, "follow", p)
+}
+
+// followFeeds adds the feeds of the form to feeds.txt, as the button of the
+// follow page sends them. Feeds that the account follows already are
+// skipped.
+func (s *server) followFeeds(w http.ResponseWriter, r *http.Request) {
+	if !s.sameSite(w, r) {
+		return
+	}
+	u := s.owner(w, r)
+	if u == nil {
+		return
+	}
+	r.Body = http.MaxBytesReader(w, r.Body, maxForm)
+	if err := r.ParseForm(); err != nil {
+		http.Error(w, "cannot read the form", http.StatusBadRequest)
+		return
+	}
+	feeds, _ := sharedFeeds(r.PostForm)
+	added, known := 0, 0
+	err := s.store.changeFeeds(u, func(text string) (string, error) {
+		ls := lines(text)
+		have := map[string]bool{}
+		for _, f := range parseFeeds(text) {
+			have[norm(f.URL)] = true
+		}
+		for _, f := range feeds {
+			switch {
+			case have[norm(f.URL)]:
+				known++
+			case len(have) >= maxFeeds:
+				return "", errFeedMany
+			default:
+				have[norm(f.URL)] = true
+				ls = append(ls, f.URL+"\t"+f.Name)
+				added++
+			}
+		}
+		return join(ls), nil
+	})
+	if errors.Is(err, errFeedMany) {
+		p, perr := s.feedData(u, "", 0)
+		if perr != nil {
+			s.fail(w, perr)
+			return
+		}
+		p.Error = sentence(err)
+		s.render(w, http.StatusBadRequest, "feed", p)
+		return
+	} else if err != nil {
+		s.fail(w, err)
+		return
+	}
+	http.Redirect(w, r, fmt.Sprintf("/feed?done=followed&added=%d&known=%d", added, known), http.StatusSeeOther)
 }
 
 // followFeed adds the feed of the form to feeds.txt.

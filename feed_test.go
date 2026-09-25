@@ -57,7 +57,7 @@ func TestFeedPagesNeedSignIn(t *testing.T) {
 	if code, to, _ := e.get(c, "/feed"); code != http.StatusSeeOther || to != "/login" {
 		t.Errorf("GET /feed: %d to %q", code, to)
 	}
-	for _, path := range []string{"/feed/add", "/feed/delete", "/feed/settings"} {
+	for _, path := range []string{"/feed/add", "/feed/delete", "/feed/settings", "/feed/follow"} {
 		if code, to, _ := e.send(c, path, url.Values{"url": {"https://a.org/rss.xml"}}); code != http.StatusSeeOther || to != "/login" {
 			t.Errorf("POST %s: %d to %q", path, code, to)
 		}
@@ -326,6 +326,135 @@ func TestDeleteAccountRemovesTheFeeds(t *testing.T) {
 	}
 	if _, err := os.Stat(e.s.store.feedDir(a.ID)); !os.IsNotExist(err) {
 		t.Errorf("the feeds of the account are still there: %v", err)
+	}
+}
+
+func TestShareLinks(t *testing.T) {
+	e := newEnv(t, false)
+	c, tok, _ := e.account("")
+	e.setFeeds(tok, "https://a.org/rss.xml\tAlpha\nhttps://b.org/feed\tBeta & Co\n")
+	page := e.body(c, "/feed")
+	// html/template writes + as &#43; in a link. A browser reads it back.
+	for _, want := range []string{
+		`<a href="/feed/follow?name=Alpha&amp;url=https%3A%2F%2Fa.org%2Frss.xml">Share</a>`,
+		`<a href="/feed/follow?name=Beta&#43;%26&#43;Co&amp;url=https%3A%2F%2Fb.org%2Ffeed">Share</a>`,
+		`<a href="/feed/follow?name=Alpha&amp;name=Beta&#43;%26&#43;Co&amp;url=https%3A%2F%2Fa.org%2Frss.xml&amp;url=https%3A%2F%2Fb.org%2Ffeed">Share your list</a>`,
+	} {
+		if !strings.Contains(page, want) {
+			t.Errorf("the page lacks %q", want)
+		}
+	}
+	// The link of the list has at most maxShare feeds.
+	var many []Feed
+	for i := range maxShare + 10 {
+		many = append(many, Feed{URL: fmt.Sprintf("https://f%d.org/rss", i), Name: "F"})
+	}
+	if got := strings.Count(shareLink(many), "url="); got != maxShare {
+		t.Errorf("the link of %d feeds has %d feeds", len(many), got)
+	}
+}
+
+// A visitor who opens a share link is asked to sign in or to sign up, and
+// comes back to the link. An account gets a button that follows the feeds.
+func TestShareLinkFollowsAfterSignUp(t *testing.T) {
+	e := newEnv(t, false)
+	link := "/feed/follow?name=Alpha&name=Bad&url=https%3A%2F%2Fa.org%2Frss.xml&url=javascript%3Ax"
+	c := e.browser()
+	code, _, page := e.get(c, "/feed/follow")
+	if code != http.StatusOK || !strings.Contains(page, "This link has no feed in it.") {
+		t.Errorf("a link without feeds: %d\n%s", code, page)
+	}
+	code, _, page = e.get(c, link)
+	for _, want := range []string{"Feeds shared with you", `<a href="/login">Sign in</a>`, `<a href="/signup">create an account</a>`,
+		"Alpha<br><small>https://a.org/rss.xml</small>", "javascript:x<br><small class=\"error\">not a feed address</small>"} {
+		if !strings.Contains(page, want) {
+			t.Errorf("the share page lacks %q", want)
+		}
+	}
+	if code != http.StatusOK || strings.Contains(page, "<form") || strings.Contains(page, `href="/bookmarks"`) {
+		t.Errorf("the share page of a visitor: %d, has a form or the nav", code)
+	}
+	form := url.Values{"email": {"me@example.org"}, "password": {"password1"}}
+	if code, to, _ := e.send(c, "/signup", form); code != http.StatusSeeOther || to != link {
+		t.Fatalf("sign up from the share page: %d to %q", code, to)
+	}
+	code, _, page = e.get(c, link)
+	for _, want := range []string{"Follow these feeds?", `<button>Follow 1 feed</button>`,
+		`<input type="hidden" name="url" value="https://a.org/rss.xml"><input type="hidden" name="name" value="Alpha">`} {
+		if !strings.Contains(page, want) {
+			t.Errorf("the follow page lacks %q", want)
+		}
+	}
+	if code != http.StatusOK || strings.Contains(page, `value="javascript:x"`) {
+		t.Errorf("the follow page: %d, or it sends the bad address", code)
+	}
+	follow := url.Values{"url": {"https://a.org/rss.xml", "javascript:x"}, "name": {"Alpha", "Bad"}}
+	code, to, _ := e.send(c, "/feed/follow", follow)
+	if code != http.StatusSeeOther || to != "/feed?done=followed&added=1&known=0" {
+		t.Fatalf("follow: %d to %q", code, to)
+	}
+	if got := e.feedsOf(e.token("me@example.org")); got != "https://a.org/rss.xml\tAlpha\n" {
+		t.Fatalf("feeds.txt: %q", got)
+	}
+	if !strings.Contains(e.body(c, to), "You follow 1 new feeds. 0 were in your list already.") {
+		t.Error("the feed page does not tell what happened")
+	}
+	// The same link again: nothing new to follow.
+	if page := e.body(c, link); !strings.Contains(page, "you follow this feed already") || strings.Contains(page, "<form") {
+		t.Errorf("the follow page of a known feed:\n%s", page)
+	}
+	if _, to, _ := e.send(c, "/feed/follow", follow); to != "/feed?done=followed&added=0&known=1" {
+		t.Errorf("follow again: to %q", to)
+	}
+	// The visit as an account used the cookie up: a sign-in goes to the
+	// bookmarks, as usual.
+	e.post(c, "/logout", nil)
+	if _, to, _ := e.send(c, "/login", form); to != "/bookmarks" {
+		t.Errorf("sign in after the share page: to %q", to)
+	}
+}
+
+func TestShareLinkWaitsForTheEmailCheck(t *testing.T) {
+	e := newEnv(t, false)
+	e.withMail()
+	link := "/feed/follow?name=Alpha&url=https%3A%2F%2Fa.org%2Frss.xml"
+	c := e.browser()
+	e.get(c, link)
+	if _, to, _ := e.send(c, "/signup", url.Values{"email": {"me@example.org"}, "password": {"password1"}}); to != link {
+		t.Fatalf("sign up: to %q", to)
+	}
+	if code, to, _ := e.get(c, link); code != http.StatusSeeOther || to != "/account" {
+		t.Fatalf("the link before the check: %d to %q", code, to)
+	}
+	// The link of the email, opened in the same browser, goes back to the
+	// share page.
+	resp, err := c.Get(e.link())
+	if err != nil {
+		t.Fatal(err)
+	}
+	resp.Body.Close()
+	if resp.StatusCode != http.StatusSeeOther || resp.Header.Get("Location") != link {
+		t.Fatalf("the email check: %d to %q", resp.StatusCode, resp.Header.Get("Location"))
+	}
+	if code, _, page := e.get(c, link); code != http.StatusOK || !strings.Contains(page, `<button>Follow 1 feed</button>`) {
+		t.Errorf("the link after the check: %d", code)
+	}
+	// In another browser, the email check shows the page as before.
+	e.post(c, "/account/verify", nil)
+	if code := e.open(e.link()); code != http.StatusBadRequest {
+		t.Errorf("a used code: %d", code)
+	}
+}
+
+// The next cookie sends the browser only to a share page.
+func TestNextCookieOnlyGoesToShareLinks(t *testing.T) {
+	e := newEnv(t, false)
+	e.signup("me@example.org")
+	c := e.browser()
+	u, _ := url.Parse(e.web.URL)
+	c.Jar.SetCookies(u, []*http.Cookie{{Name: nextCookie, Value: "/account/delete"}})
+	if _, to, _ := e.send(c, "/login", url.Values{"email": {"me@example.org"}, "password": {"password1"}}); to != "/bookmarks" {
+		t.Errorf("sign in with a cookie for another page: to %q", to)
 	}
 }
 

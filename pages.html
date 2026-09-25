@@ -185,8 +185,10 @@ keeps one in <code>~/.config/sbm/sync</code>):</p>
 {{end}}</ul>
 {{if .Next}}<p><a href="/feed?start={{.Next}}{{with .Filter}}&amp;feed={{.}}{{end}}">Older items</a></p>{{end}}
 {{with .Feeds}}<h2>Feeds you follow</h2>
+<p class="note"><a href="{{$.ShareAll}}">Share your list</a>: anyone with that link can follow these feeds
+on sbm Sync, with an account or after they make one. Share opens the same kind of link for one feed.</p>
 <ul class="bookmarks">
-{{range .}}<li><a href="/feed?feed={{.File}}">{{.Name}}</a> <small>{{.URL}}</small>
+{{range .}}<li><a href="/feed?feed={{.File}}">{{.Name}}</a> <small>{{.URL}} · <a href="{{.Share}}">Share</a></small>
 <form method="post" action="/feed/delete"><input type="hidden" name="url" value="{{.URL}}"><button>Unfollow</button></form></li>
 {{end}}</ul>{{end}}
 {{if .Settings.Explore}}<h2>Explore</h2>
@@ -250,6 +252,23 @@ This page shows the first {{len .Rows}}.{{end}}{{if or .Query .Tag}} <a href="/b
 {{with .Tags}}<h2>Tags</h2>
 <p>{{range .}}<a href="/bookmarks?tag={{.Name}}">{{.Name}}</a>&nbsp;({{.N}}) {{end}}</p>{{end}}
 <script src="/search.js" defer></script>
+{{template "foot" .}}{{end}}
+
+{{define "follow"}}{{template "head" .}}
+{{if .SignedIn}}{{template "nav"}}{{end}}
+<h1>{{if .SignedIn}}Follow these feeds?{{else}}Feeds shared with you{{end}}</h1>
+{{with .Error}}<p class="error">{{.}}</p>{{end}}
+{{if or .Feeds .Bad}}<ul class="bookmarks">
+{{range .Feeds}}<li>{{.Name}}<br><small>{{.URL}}{{if .Known}} · you follow this feed already{{end}}</small></li>
+{{end}}{{range .Bad}}<li>{{.}}<br><small class="error">not a feed address</small></li>
+{{end}}</ul>{{else}}<p>This link has no feed in it.</p>{{end}}
+{{if .SignedIn}}{{if .New}}<form method="post" action="/feed/follow">
+{{range .Feeds}}{{if not .Known}}<input type="hidden" name="url" value="{{.URL}}"><input type="hidden" name="name" value="{{.Name}}">
+{{end}}{{end}}<button>Follow {{.New}} {{if eq .New 1}}feed{{else}}feeds{{end}}</button> <a href="/feed">Cancel</a>
+</form>{{else}}<p><a href="/feed">Your feed</a></p>{{end}}
+{{else}}<p>sbm Sync follows RSS and Atom feeds for you and shows the new items on one page. It is free.
+<a href="/login">Sign in</a> or <a href="/signup">create an account</a> to follow these feeds. You come back to this page after that.</p>
+{{end}}
 {{template "foot" .}}{{end}}
 
 {{define "edit"}}{{template "head" .}}

@@ -197,6 +197,8 @@ func (s *server) routes() http.Handler {
 	m.HandleFunc("POST /feed/add", s.followFeed)
 	m.HandleFunc("POST /feed/delete", s.unfollowFeed)
 	m.HandleFunc("POST /feed/settings", s.saveFeedSettings)
+	m.HandleFunc("GET /feed/follow", s.follow)
+	m.HandleFunc("POST /feed/follow", s.followFeeds)
 	m.HandleFunc("GET /api/feed", s.apiFeed)
 	m.HandleFunc("GET /api/feeds", s.apiFeeds)
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -382,6 +384,11 @@ func (s *server) confirm(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	log.Printf("account %s: email confirmed", a.ID)
+	// The browser of the account goes back to the share page it came from.
+	if to := s.next(r, ""); to != "" && s.user(r) != nil {
+		http.Redirect(w, r, to, http.StatusSeeOther)
+		return
+	}
 	p := s.page("Email address confirmed")
 	p.Email = s.store.view(a).Email
 	s.render(w, http.StatusOK, "confirmed", p)
@@ -408,7 +415,8 @@ func (s *server) login(w http.ResponseWriter, r *http.Request) {
 	s.startSession(w, r, a, "/bookmarks")
 }
 
-// startSession signs the browser in and sends it to the page at the path to.
+// startSession signs the browser in and sends it to the page at the path
+// to, or back to the share page that it came from.
 func (s *server) startSession(w http.ResponseWriter, r *http.Request, a *Account, to string) {
 	token, err := s.store.signIn(a)
 	if err != nil {
@@ -416,7 +424,7 @@ func (s *server) startSession(w http.ResponseWriter, r *http.Request, a *Account
 		return
 	}
 	s.setCookie(w, token, 365*24*3600)
-	http.Redirect(w, r, to, http.StatusSeeOther)
+	http.Redirect(w, r, s.next(r, to), http.StatusSeeOther)
 }
 
 func (s *server) logout(w http.ResponseWriter, r *http.Request) {
