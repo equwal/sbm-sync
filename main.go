@@ -75,6 +75,9 @@ func main() {
 	if err != nil {
 		log.Fatal(err)
 	}
+	if store.defaultFeeds, err = defaultFeeds(os.Getenv("SBM_DEFAULT_FEEDS")); err != nil {
+		log.Fatal(err)
+	}
 	s := &server{
 		store:      store,
 		site:       site,

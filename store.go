@@ -52,12 +52,16 @@ type Account struct {
 // of each bookmark file in files/<account ID>/<SHA-256 of the text>. The file
 // HEAD beside the versions names the current one.
 type Store struct {
-	dir      string
-	mu       sync.Mutex // for the maps, the accounts and accounts.json
-	accounts map[string]*Account
-	byEmail  map[string]*Account
-	byToken  map[string]*Account
-	locks    map[string]*sync.Mutex // one for the files of each account
+	dir string
+	// defaultFeeds is the feeds.txt of an account that has none yet, see
+	// feed.go. Once the account changes its feeds, its own file counts,
+	// also when it is empty.
+	defaultFeeds string
+	mu           sync.Mutex // for the maps, the accounts and accounts.json
+	accounts     map[string]*Account
+	byEmail      map[string]*Account
+	byToken      map[string]*Account
+	locks        map[string]*sync.Mutex // one for the files of each account
 }
 
 func openStore(dir string) (*Store, error) {

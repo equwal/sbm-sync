@@ -10,6 +10,7 @@ import (
 	"slices"
 	"strings"
 	"testing"
+	"time"
 
 	"pgregory.net/rapid"
 )
@@ -127,6 +128,59 @@ func TestFollowAndUnfollow(t *testing.T) {
 	}
 }
 
+// A new account follows the default feeds of the server. It can unfollow
+// them, and they do not come back.
+func TestDefaultFeeds(t *testing.T) {
+	e := newEnv(t, false)
+	e.s.store.defaultFeeds = "https://recentlywritten.com/rss.xml\trecentlywritten.com\n"
+	c, tok, _ := e.account("")
+	a := e.s.store.byTok(tok)
+	if got := e.feedsOf(tok); got != e.s.store.defaultFeeds {
+		t.Fatalf("feeds of a new account: %q", got)
+	}
+	if !strings.Contains(e.body(c, "/feed"), `<a href="/feed?feed=recentlywritten.com">recentlywritten.com</a>`) {
+		t.Error("the page does not show the default feed")
+	}
+	// The job fetches the default feed of an account that never opened the page.
+	f := &fakeTools{items: map[string]string{"https://recentlywritten.com/rss.xml": oneItem}, now: time.Now()}
+	e.s.feeds = f.tools()
+	e.s.runFeeds()
+	if !strings.Contains(e.feedFile(a, "sfeedrc"), "'https://recentlywritten.com/rss.xml'") {
+		t.Error("the job does not fetch the default feed")
+	}
+	e.send(c, "/feed/add", url.Values{"url": {"https://a.org/rss.xml"}, "name": {"A"}})
+	if got := e.feedsOf(tok); got != e.s.store.defaultFeeds+"https://a.org/rss.xml\tA\n" {
+		t.Fatalf("after a follow: %q", got)
+	}
+	e.send(c, "/feed/delete", url.Values{"url": {"https://recentlywritten.com/rss.xml"}})
+	if got := e.feedsOf(tok); got != "https://a.org/rss.xml\tA\n" {
+		t.Fatalf("after the unfollow of the default feed: %q", got)
+	}
+	e.send(c, "/feed/delete", url.Values{"url": {"https://a.org/rss.xml"}})
+	if got := e.feedsOf(tok); got != "" {
+		t.Fatalf("after the unfollow of all feeds, the default is back: %q", got)
+	}
+	e.s.runFeeds()
+	if got := e.feedsOf(tok); got != "" {
+		t.Fatalf("the job brought the default feed back: %q", got)
+	}
+}
+
+func TestDefaultFeedsSetting(t *testing.T) {
+	got, err := defaultFeeds(" https://recentlywritten.com/rss.xml\nhttp://a.org/feed ")
+	if err != nil || got != "https://recentlywritten.com/rss.xml\trecentlywritten.com\nhttp://a.org/feed\ta.org\n" {
+		t.Errorf("defaultFeeds = %q, %v", got, err)
+	}
+	if got, err := defaultFeeds(""); err != nil || got != "" {
+		t.Errorf("empty setting: %q, %v", got, err)
+	}
+	for _, bad := range []string{"ftp://a.org/feed", "https://a.org/it's", "a.org/feed"} {
+		if _, err := defaultFeeds(bad); err == nil {
+			t.Errorf("defaultFeeds(%q) gave no error", bad)
+		}
+	}
+}
+
 func TestFeedLimit(t *testing.T) {
 	e := newEnv(t, false)
 	c, tok, _ := e.account("")
@@ -211,6 +265,8 @@ func TestFeedPages(t *testing.T) {
 	}
 }
 
+// The daily email is on by default. The page offers the box only when the
+// server sends email, and a save without the box keeps the choice.
 func TestFeedMailSettingNeedsAnSMTPServer(t *testing.T) {
 	e := newEnv(t, false)
 	c, tok, _ := e.account("")
@@ -218,17 +274,24 @@ func TestFeedMailSettingNeedsAnSMTPServer(t *testing.T) {
 	if strings.Contains(e.body(c, "/feed"), `name="mail"`) {
 		t.Error("the page offers the digest without an SMTP server")
 	}
-	e.send(c, "/feed/settings", url.Values{"mail": {"on"}, "explore": {"on"}})
-	if f := e.s.store.view(a).Feed; f.Mail || !f.Explore {
+	e.send(c, "/feed/settings", url.Values{"explore": {"on"}})
+	if f := e.s.store.view(a).Feed; f.NoMail || !f.Explore {
 		t.Errorf("settings without an SMTP server: %+v", f)
 	}
 	e.withMail()
-	if !strings.Contains(e.body(c, "/feed"), `name="mail"`) {
-		t.Error("the page does not offer the digest")
+	if !strings.Contains(e.body(c, "/feed"), `<input type="checkbox" class="check" name="mail" checked>`) {
+		t.Error("the page does not offer the digest, on")
+	}
+	e.send(c, "/feed/settings", url.Values{})
+	if f := e.s.store.view(a).Feed; !f.NoMail || f.Explore {
+		t.Errorf("settings with the box cleared: %+v", f)
+	}
+	if !strings.Contains(e.body(c, "/feed"), `<input type="checkbox" class="check" name="mail">`) {
+		t.Error("the page shows the digest on")
 	}
 	e.send(c, "/feed/settings", url.Values{"mail": {"on"}})
-	if f := e.s.store.view(a).Feed; !f.Mail || f.Explore {
-		t.Errorf("settings with an SMTP server: %+v", f)
+	if f := e.s.store.view(a).Feed; f.NoMail {
+		t.Errorf("settings with the box ticked: %+v", f)
 	}
 }
 

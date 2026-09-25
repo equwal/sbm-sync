@@ -167,7 +167,7 @@ bookmarks for feeds. The server fetches new items every 30 minutes.</p>{{end}}
 <details><summary>Settings</summary>
 <form method="post" action="/feed/settings">
 <label><input type="checkbox" class="check" name="newtab"{{if .Settings.NewTab}} checked{{end}}>Open links in a new tab</label>
-{{if .HasMail}}<label><input type="checkbox" class="check" name="mail"{{if .Settings.Mail}} checked{{end}}>Send me the new items by email, once a day</label>{{end}}
+{{if .HasMail}}<label><input type="checkbox" class="check" name="mail"{{if not .Settings.NoMail}} checked{{end}}>Send me the new items by email, once a day</label>{{end}}
 <label><input type="checkbox" class="check" name="explore"{{if .Settings.Explore}} checked{{end}}>Explore: look through my bookmarks for feeds</label>
 <button>Save</button>
 </form></details>
@@ -338,7 +338,7 @@ When this server checks email addresses, it also sends you an email with a link 
 <li>When you subscribe: your Stripe customer ID and the state of your subscription: to bill you.</li>
 <li>When you follow feeds: the addresses of the feeds, the items that the server fetched from them, and
 the addresses of the feeds that the server found on your bookmarked pages when you asked it to look:
-to show you the items, and to send them to you by email once a day when you asked for that.</li>
+to show you the items, and to send you the new ones by email once a day, unless you turn that off on the feed page.</li>
 </ul>
 <p>The server does not sell or share this data, and does not use it for ads.
 There are no analytics and no trackers. The only cookie keeps you signed in.</p>

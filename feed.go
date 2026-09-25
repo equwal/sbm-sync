@@ -23,6 +23,7 @@ package main
 
 import (
 	"errors"
+	"fmt"
 	"io"
 	"io/fs"
 	"net/http"
@@ -52,10 +53,11 @@ var (
 	notFile      = regexp.MustCompile(`[^A-Za-z0-9._-]+`)
 )
 
-// feedSettings are the feed choices of an account.
+// feedSettings are the feed choices of an account. The daily email is on
+// by default: the account gave its address at sign-up.
 type feedSettings struct {
 	NewTab  bool `json:"newtab,omitempty"`  // the feed page opens links in a new tab
-	Mail    bool `json:"mail,omitempty"`    // an email with the new items, once a day
+	NoMail  bool `json:"nomail,omitempty"`  // no email with the new items once a day
 	Explore bool `json:"explore,omitempty"` // the job looks through the bookmarks for feeds
 }
 
@@ -219,16 +221,37 @@ func (s *Store) feedDir(id string) string {
 	return filepath.Join(s.dir, "feeds", id)
 }
 
-// readFeeds gives feeds.txt of the account. A missing file is empty.
+// defaultFeeds gives the feeds.txt of a new account from the setting
+// SBM_DEFAULT_FEEDS: feed URLs with spaces between them. The host of each
+// URL is its name.
+func defaultFeeds(setting string) (string, error) {
+	var ls []string
+	for _, u := range strings.Fields(setting) {
+		u, err := feedURL(u)
+		if err != nil {
+			return "", fmt.Errorf("SBM_DEFAULT_FEEDS: %q: %v", u, err)
+		}
+		ls = append(ls, u+"\t"+feedName("", u))
+	}
+	return join(ls), nil
+}
+
+// feedsText gives feeds.txt of the account. The caller holds the lock of
+// the account. An account without the file has the default feeds.
+func (s *Store) feedsText(a *Account) (string, error) {
+	b, err := os.ReadFile(filepath.Join(s.feedDir(a.ID), "feeds.txt"))
+	if errors.Is(err, fs.ErrNotExist) {
+		return s.defaultFeeds, nil
+	}
+	return string(b), err
+}
+
+// readFeeds gives feeds.txt of the account.
 func (s *Store) readFeeds(a *Account) (string, error) {
 	m := s.lock(a.ID)
 	m.Lock()
 	defer m.Unlock()
-	b, err := os.ReadFile(filepath.Join(s.feedDir(a.ID), "feeds.txt"))
-	if errors.Is(err, fs.ErrNotExist) {
-		return "", nil
-	}
-	return string(b), err
+	return s.feedsText(a)
 }
 
 // changeFeeds gives feeds.txt to f and writes what f gives back. No other
@@ -238,11 +261,11 @@ func (s *Store) changeFeeds(a *Account, f func(text string) (string, error)) err
 	m.Lock()
 	defer m.Unlock()
 	dir := s.feedDir(a.ID)
-	b, err := os.ReadFile(filepath.Join(dir, "feeds.txt"))
-	if err != nil && !errors.Is(err, fs.ErrNotExist) {
+	old, err := s.feedsText(a)
+	if err != nil {
 		return err
 	}
-	text, err := f(string(b))
+	text, err := f(old)
 	if err != nil {
 		return err
 	}
@@ -498,8 +521,12 @@ func (s *server) saveFeedSettings(w http.ResponseWriter, r *http.Request) {
 	r.Body = http.MaxBytesReader(w, r.Body, maxForm)
 	f := feedSettings{
 		NewTab:  r.PostFormValue("newtab") != "",
-		Mail:    s.mail != nil && r.PostFormValue("mail") != "",
+		NoMail:  s.store.view(u).Feed.NoMail,
 		Explore: r.PostFormValue("explore") != "",
+	}
+	// The form has the email box only when the server sends email.
+	if s.mail != nil {
+		f.NoMail = r.PostFormValue("mail") == ""
 	}
 	if err := s.store.setFeed(u, f); err != nil {
 		s.fail(w, err)

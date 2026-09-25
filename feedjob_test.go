@@ -151,12 +151,8 @@ func TestJobSendsADailyDigest(t *testing.T) {
 	f := &fakeTools{items: map[string]string{"https://a.org/rss.xml": oneItem}, now: start}
 	e.s.feeds = f.tools()
 
-	e.s.runFeeds()
-	if e.sent() != 0 || e.feedFile(a, "mailed") != "" {
-		t.Fatal("the job mails without the opt-in")
-	}
-	e.send(c, "/feed/settings", url.Values{"mail": {"on"}})
-	// The first run after the opt-in notes the items and sends nothing.
+	// The email is on by default. The first run notes the items and sends
+	// nothing.
 	e.s.runFeeds()
 	if e.sent() != 0 || e.feedFile(a, "mailed") != "Alpha\tid1\n" || strings.TrimSpace(e.feedFile(a, "digest")) != "1800000000" {
 		t.Fatalf("first run: %d emails, mailed %q, digest %q", e.sent(), e.feedFile(a, "mailed"), e.feedFile(a, "digest"))
@@ -201,21 +197,29 @@ func TestJobSendsADailyDigest(t *testing.T) {
 	if e.feedFile(a, "mailed") != "" || e.feedFile(a, "digest") != "" {
 		t.Error("the opt-out kept the digest files")
 	}
+	f.items["https://a.org/rss.xml"] = "1700010800\tFour\thttps://a.org/4\t\t\tid4\t\t\t\n" + f.items["https://a.org/rss.xml"]
+	f.now = start.Add(80 * time.Hour)
+	e.s.runFeeds()
 	if e.sent() != 2 {
 		t.Error("a digest went out after the opt-out")
+	}
+	// The opt-in starts fresh: the first run notes the items only.
+	e.send(c, "/feed/settings", url.Values{"mail": {"on"}})
+	e.s.runFeeds()
+	if e.sent() != 2 || e.feedFile(a, "mailed") == "" {
+		t.Errorf("after the opt-in: %d emails, mailed %q", e.sent(), e.feedFile(a, "mailed"))
 	}
 }
 
 // A digest that does not go out is sent again with the next run.
 func TestJobKeepsTheItemsOfAFailedDigest(t *testing.T) {
 	e := newEnv(t, false)
-	c, tok, _ := e.account("")
+	_, tok, _ := e.account("")
 	e.withMail()
 	a := e.setFeeds(tok, "https://a.org/rss.xml\tAlpha\n")
 	start := time.Unix(1_800_000_000, 0)
 	f := &fakeTools{items: map[string]string{"https://a.org/rss.xml": ""}, now: start}
 	e.s.feeds = f.tools()
-	e.send(c, "/feed/settings", url.Values{"mail": {"on"}})
 	e.s.runFeeds()
 	f.items["https://a.org/rss.xml"] = oneItem
 	f.now = start.Add(25 * time.Hour)
@@ -237,7 +241,6 @@ func TestJobMailsOnlyConfirmedAccounts(t *testing.T) {
 	e.signup("me@example.org")
 	tok := e.token("me@example.org")
 	a := e.setFeeds(tok, "https://a.org/rss.xml\tAlpha\n")
-	e.s.store.setFeed(a, feedSettings{Mail: true})
 	f := &fakeTools{items: map[string]string{"https://a.org/rss.xml": oneItem}, now: time.Now()}
 	e.s.feeds = f.tools()
 	e.s.runFeeds()

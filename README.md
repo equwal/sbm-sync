@@ -76,15 +76,19 @@ It uses [sfeed](https://codemadness.org/sfeed.html) on the server:
 
 - Follow a feed: type its address and a name. The list is one plain file,
   `feeds.txt`, with one feed on each line: the URL, a tab and the name.
+  A new account starts with the default feeds of the server
+  (`SBM_DEFAULT_FEEDS`; on sbmsync.com, the feed of recentlywritten.com).
+  You can unfollow them like any other feed.
 - The server fetches the feeds every 30 minutes with `sfeed_update` and
   shows the items newest first, with the feed, the time and the author. A
   setting opens the links in a new tab.
 - Explore: turn it on, and the server looks through your bookmarked pages
   for feeds with `sfeed_web`, 20 pages with each update, and offers what it
   finds.
-- Digest: turn it on, and the server sends you the new items by email once
-  a day, in the form of `sfeed_plain`. The first day after you turn it on
-  sends nothing, so that you do not get the whole history.
+- Digest: the server sends you the new items by email once a day, in the
+  form of `sfeed_plain`, unless you turn that off in the settings of the
+  page. The first day sends nothing, so that you do not get the whole
+  history. A server without an SMTP server sends no digest.
 
 Read the feed in a terminal with the token of a device (`bm-sync login`
 keeps one in `~/.config/sbm/sync`):
@@ -212,6 +216,8 @@ All settings come from the environment. With Docker, put them in `.env`.
     SBM_SMTP_PASSWORD  password on the SMTP server
     SBM_MAIL_FROM   sender, as "sbm Sync <sync@example.org>" (default
                     SBM_SMTP_USER)
+    SBM_DEFAULT_FEEDS  feed URLs, with spaces between them, that a new
+                    account follows until it unfollows them (optional)
 
 Without `SBM_SMTP_HOST`, the server sends no email, and accounts need no
 email check. With it, each new account gets an email with a link. The

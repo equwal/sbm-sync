@@ -7,8 +7,8 @@ package main
 //     each feed and merges the new items into items/<file>;
 //  2. when the account asked for it, looks through the bookmarks of the
 //     account for feeds with sfeed_web, and keeps what it found in explore;
-//  3. when the account asked for it, sends the items that are new since the
-//     last digest by email, once a day, in the form of sfeed_plain.
+//  3. unless the account turned it off, sends the items that are new since
+//     the last digest by email, once a day, in the form of sfeed_plain.
 //
 // The job writes only its own files under feeds/<account>/. The web server
 // writes only feeds.txt and accounts.json. So the two never write the same
@@ -183,7 +183,7 @@ func (s *server) feedAccount(p *Account) error {
 		}
 		feeds = append(feeds, f)
 	}
-	if len(feeds) == 0 && !a.Feed.Explore && !a.Feed.Mail {
+	if len(feeds) == 0 && !a.Feed.Explore {
 		if _, err := os.Stat(dir); errors.Is(err, fs.ErrNotExist) {
 			return nil // the account never used feeds
 		}
@@ -224,7 +224,7 @@ func (s *server) feedAccount(p *Account) error {
 			log.Printf("account %s: explore: %v", a.ID, err)
 		}
 	}
-	if !a.Feed.Mail {
+	if a.Feed.NoMail {
 		os.Remove(filepath.Join(dir, "mailed"))
 		os.Remove(filepath.Join(dir, "digest"))
 	} else if s.mail != nil && s.verified(a) && s.active(a) {
@@ -294,7 +294,7 @@ func (s *server) explore(p *Account, dir string, cache map[string]bool) error {
 }
 
 // digest sends the items that came in since the last digest, once a day.
-// The first run after the opt-in sends nothing: it only notes the items of
+// The first run for an account sends nothing: it only notes the items of
 // that day, so that nobody gets the whole history.
 func (s *server) digest(a Account, dir string, feeds []Feed) error {
 	mailedPath, digestPath := filepath.Join(dir, "mailed"), filepath.Join(dir, "digest")
