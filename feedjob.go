@@ -104,12 +104,18 @@ func (s *server) runFeeds() {
 // sfeedrc gives the sfeed_update settings for the feeds: the item files go
 // to itemsDir. Each URL passed feedURL, and each file name has only safe
 // characters, so the single quotes hold.
+//
+// The fetch asks only for a feed that changed since the item file was
+// written (-z), but not when that file is empty: sfeed_update touches the
+// file before the first fetch, and curl would then skip the whole feed as
+// not newer than the file.
 func sfeedrc(itemsDir string, feeds []Feed) string {
+	const curl = "curl --proto '=http,https' -L --max-redirs 3 -A 'sbm-sync (+https://github.com/equwal/sbm-sync)' -f -s -m 20 --max-filesize 5242880"
 	var b strings.Builder
 	b.WriteString("# sbm-sync makes this file from feeds.txt. Do not edit it.\n")
 	b.WriteString("sfeedpath='" + itemsDir + "'\n")
 	b.WriteString("maxjobs=4\n")
-	b.WriteString("fetch() {\n\tcurl --proto '=http,https' -L --max-redirs 3 -A 'sbm-sync (+https://github.com/equwal/sbm-sync)' -f -s -m 20 --max-filesize 5242880 -z \"$3\" \"$2\" 2>/dev/null\n}\n")
+	b.WriteString("fetch() {\n\tif [ -s \"$3\" ]; then\n\t\t" + curl + " -z \"$3\" \"$2\" 2>/dev/null\n\telse\n\t\t" + curl + " \"$2\" 2>/dev/null\n\tfi\n}\n")
 	b.WriteString("feeds() {\n")
 	for _, f := range feeds {
 		b.WriteString("\tfeed '" + f.File + "' '" + f.URL + "'\n")

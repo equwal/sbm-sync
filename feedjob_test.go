@@ -99,7 +99,9 @@ func TestJobFetchesTheFeeds(t *testing.T) {
 	e.s.runFeeds()
 	rc := e.feedFile(a, "sfeedrc")
 	itemsDir := filepath.Join(e.s.store.feedDir(a.ID), "items")
-	for _, want := range []string{"sfeedpath='" + itemsDir + "'\n", "\tfeed 'Alpha' 'https://a.org/rss.xml'\n", "curl --proto '=http,https'"} {
+	// The conditional fetch (-z) is only for an item file with items in it.
+	for _, want := range []string{"sfeedpath='" + itemsDir + "'\n", "\tfeed 'Alpha' 'https://a.org/rss.xml'\n",
+		"\tif [ -s \"$3\" ]; then\n\t\tcurl --proto '=http,https'", ` -z "$3" "$2" 2>/dev/null` + "\n\telse\n\t\tcurl "} {
 		if !strings.Contains(rc, want) {
 			t.Errorf("the sfeedrc lacks %q:\n%s", want, rc)
 		}
