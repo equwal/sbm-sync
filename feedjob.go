@@ -175,8 +175,9 @@ func (s *server) feedAccount(p *Account) error {
 		return err
 	}
 	cache := map[string]bool{}
+	followed := parseFeeds(text)
 	var feeds []Feed
-	for _, f := range parseFeeds(text) {
+	for _, f := range followed {
 		if _, err := feedURL(f.URL); err != nil || !s.public(f.URL, cache) {
 			log.Printf("account %s: feed %s: not a public http address, skipped", a.ID, f.URL)
 			continue
@@ -227,8 +228,11 @@ func (s *server) feedAccount(p *Account) error {
 	if a.Feed.NoMail {
 		os.Remove(filepath.Join(dir, "mailed"))
 		os.Remove(filepath.Join(dir, "digest"))
+		os.Remove(filepath.Join(dir, "known"))
 	} else if s.mail != nil && s.verified(a) && s.active(a) {
-		if err := s.digest(a, dir, feeds); err != nil {
+		// The digest gets all followed feeds, also a feed that this run
+		// skipped because its host did not resolve. So that feed stays known.
+		if err := s.digest(a, dir, followed); err != nil {
 			log.Printf("account %s: digest: %v", a.ID, err)
 		}
 	}
@@ -295,18 +299,29 @@ func (s *server) explore(p *Account, dir string, cache map[string]bool) error {
 
 // digest sends the items that came in since the last digest, once a day.
 // The first run for an account sends nothing: it only notes the items of
-// that day, so that nobody gets the whole history.
+// that day, so that nobody gets the whole history. A feed that the account
+// follows later is the same: the first run that finds items of the feed
+// notes them and sends none of them.
+//
+// The file known has a line for each feed that the digest noted: the URL,
+// a tab and the item file. A feed that gets another item file, for example
+// under a new name, is a new feed, because the keys of its items change. A
+// new feed without items does not become known, because its first fetch
+// can have failed. So the first items of a feed that starts empty are
+// noted too, and not sent.
 func (s *server) digest(a Account, dir string, feeds []Feed) error {
-	mailedPath, digestPath := filepath.Join(dir, "mailed"), filepath.Join(dir, "digest")
+	mailedPath, digestPath, knownPath := filepath.Join(dir, "mailed"), filepath.Join(dir, "digest"), filepath.Join(dir, "known")
 	now := s.feeds.now()
 	stamp := []byte(strconv.FormatInt(now.Unix(), 10) + "\n")
+	id := func(f Feed) string { return f.URL + "\t" + f.File }
 	type feedItems struct {
 		f     Feed
 		items []Item
 	}
 	var all []feedItems
-	var keys []string
+	var keys, ids []string
 	for _, f := range feeds {
+		ids = append(ids, id(f))
 		b, err := os.ReadFile(filepath.Join(dir, "items", f.File))
 		if err != nil {
 			continue
@@ -322,9 +337,50 @@ func (s *server) digest(a Account, dir string, feeds []Feed) error {
 		if err := writeFile(mailedPath, []byte(join(keys))); err != nil {
 			return err
 		}
+		if err := writeFile(knownPath, []byte(join(ids))); err != nil {
+			return err
+		}
 		return writeFile(digestPath, stamp)
 	} else if err != nil {
 		return err
+	}
+	// Without the file known, as after an update from a version without
+	// it, the digest knows all feeds that the account follows now.
+	kb, err := os.ReadFile(knownPath)
+	noKnown := errors.Is(err, fs.ErrNotExist)
+	if noKnown {
+		kb = []byte(join(ids))
+	} else if err != nil {
+		return err
+	}
+	known := set(lines(string(kb)))
+	var noted []string
+	for _, fi := range all {
+		if !known[id(fi.f)] && len(fi.items) > 0 {
+			known[id(fi.f)] = true
+			for _, it := range fi.items {
+				noted = append(noted, it.Key)
+			}
+		}
+	}
+	if len(noted) > 0 {
+		old = append(old, join(noted)...)
+		if err := writeFile(mailedPath, old); err != nil {
+			return err
+		}
+	}
+	// A feed that the account left is not known any more. When the account
+	// follows it again, it is a new feed.
+	var keep []string
+	for _, k := range ids {
+		if known[k] {
+			keep = append(keep, k)
+		}
+	}
+	if k := join(keep); noKnown || k != string(kb) {
+		if err := writeFile(knownPath, []byte(k)); err != nil {
+			return err
+		}
 	}
 	b, _ := os.ReadFile(digestPath)
 	last, _ := strconv.ParseInt(strings.TrimSpace(string(b)), 10, 64)

@@ -194,7 +194,7 @@ func TestJobSendsADailyDigest(t *testing.T) {
 	// The opt-out forgets the digests, so that a later opt-in starts fresh.
 	e.send(c, "/feed/settings", url.Values{})
 	e.s.runFeeds()
-	if e.feedFile(a, "mailed") != "" || e.feedFile(a, "digest") != "" {
+	if e.feedFile(a, "mailed") != "" || e.feedFile(a, "digest") != "" || e.feedFile(a, "known") != "" {
 		t.Error("the opt-out kept the digest files")
 	}
 	f.items["https://a.org/rss.xml"] = "1700010800\tFour\thttps://a.org/4\t\t\tid4\t\t\t\n" + f.items["https://a.org/rss.xml"]
@@ -232,6 +232,125 @@ func TestJobKeepsTheItemsOfAFailedDigest(t *testing.T) {
 	e.s.runFeeds()
 	if e.sent() != 1 || !strings.Contains(e.mails[0], "One") {
 		t.Errorf("the next run: %d emails", e.sent())
+	}
+}
+
+// A feed that the account follows after the first digest run does not
+// bring its old items into the digest: the first run that finds items of
+// the feed notes them. The items that come after that go out.
+func TestJobKeepsTheOldItemsOfANewFeedOutOfTheDigest(t *testing.T) {
+	e := newEnv(t, false)
+	c, tok, _ := e.account("")
+	e.withMail()
+	a := e.setFeeds(tok, "https://a.org/rss.xml\tAlpha\n")
+	start := time.Unix(1_800_000_000, 0)
+	f := &fakeTools{items: map[string]string{"https://a.org/rss.xml": oneItem}, now: start}
+	e.s.feeds = f.tools()
+	e.s.runFeeds()
+
+	// The first fetch of Beta gives its old items. The first fetch of Gamma
+	// gives nothing, as a fetch that failed.
+	old := "1600000000\tOld 1\thttps://b.org/1\t\t\tb1\t\t\t\n1600000001\tOld 2\thttps://b.org/2\t\t\tb2\t\t\t\n"
+	f.items["https://b.org/rss.xml"] = old
+	f.items["https://c.org/rss.xml"] = ""
+	e.send(c, "/feed/add", url.Values{"url": {"https://b.org/rss.xml"}, "name": {"Beta"}})
+	e.send(c, "/feed/add", url.Values{"url": {"https://c.org/rss.xml"}, "name": {"Gamma"}})
+	f.now = start.Add(time.Hour)
+	e.s.runFeeds()
+	// Now the fetch of Gamma works, and Beta has a new item.
+	f.items["https://c.org/rss.xml"] = "1600000002\tOld 3\thttps://c.org/3\t\t\tc3\t\t\t\n"
+	f.items["https://b.org/rss.xml"] = "1800003600\tNew\thttps://b.org/new\t\t\tbnew\t\t\t\n" + old
+	f.now = start.Add(2 * time.Hour)
+	e.s.runFeeds()
+	f.now = start.Add(25 * time.Hour)
+	e.s.runFeeds()
+	if e.sent() != 1 {
+		t.Fatalf("%d emails after a day", e.sent())
+	}
+	mail := e.mails[0]
+	if !strings.Contains(mail, "sbm feed: 1 new item\n") || !strings.Contains(mail, "New") {
+		t.Errorf("the digest lacks the new item:\n%s", mail)
+	}
+	for _, item := range []string{"Old 1", "Old 2", "Old 3"} {
+		if strings.Contains(mail, item) {
+			t.Errorf("the digest has the old item %q:\n%s", item, mail)
+		}
+	}
+	if got := e.feedFile(a, "known"); got != "https://a.org/rss.xml\tAlpha\nhttps://b.org/rss.xml\tBeta\nhttps://c.org/rss.xml\tGamma\n" {
+		t.Errorf("known: %q", got)
+	}
+
+	// A feed that the account left and follows again is a new feed: the
+	// item that came while the account did not follow it is old.
+	e.send(c, "/feed/delete", url.Values{"url": {"https://b.org/rss.xml"}})
+	f.now = start.Add(26 * time.Hour)
+	e.s.runFeeds()
+	f.items["https://b.org/rss.xml"] = "1800090000\tWhile away\thttps://b.org/away\t\t\tbaway\t\t\t\n" + f.items["https://b.org/rss.xml"]
+	e.send(c, "/feed/add", url.Values{"url": {"https://b.org/rss.xml"}, "name": {"Beta"}})
+	f.now = start.Add(27 * time.Hour)
+	e.s.runFeeds()
+	// Under another name, the items of the feed get other keys. So the
+	// feed is new, also without a run between the two changes.
+	e.send(c, "/feed/delete", url.Values{"url": {"https://b.org/rss.xml"}})
+	e.send(c, "/feed/add", url.Values{"url": {"https://b.org/rss.xml"}, "name": {"Bee"}})
+	f.now = start.Add(28 * time.Hour)
+	e.s.runFeeds()
+	f.now = start.Add(50 * time.Hour)
+	e.s.runFeeds()
+	if e.sent() != 1 {
+		t.Errorf("old items of the feed that came back went out:\n%s", e.mails[len(e.mails)-1])
+	}
+	if got := e.feedFile(a, "known"); got != "https://a.org/rss.xml\tAlpha\nhttps://c.org/rss.xml\tGamma\nhttps://b.org/rss.xml\tBee\n" {
+		t.Errorf("known at the end: %q", got)
+	}
+}
+
+// A feed whose host does not resolve in one run stays known. So its new
+// items still go out.
+func TestJobKeepsAFeedKnownWhenItsHostFailsOnce(t *testing.T) {
+	e := newEnv(t, false)
+	_, tok, _ := e.account("")
+	e.withMail()
+	e.setFeeds(tok, "https://a.org/rss.xml\tAlpha\n")
+	start := time.Unix(1_800_000_000, 0)
+	f := &fakeTools{items: map[string]string{"https://a.org/rss.xml": oneItem}, now: start}
+	e.s.feeds = f.tools()
+	e.s.runFeeds()
+	e.s.feeds.lookup = func(string) ([]net.IP, error) { return nil, errors.New("no such host") }
+	f.now = start.Add(time.Hour)
+	e.s.runFeeds()
+	e.s.feeds = f.tools()
+	f.items["https://a.org/rss.xml"] = "1700003600\tTwo\thttps://a.org/2\t\t\tid2\t\t\t\n" + oneItem
+	f.now = start.Add(25 * time.Hour)
+	e.s.runFeeds()
+	if e.sent() != 1 || !strings.Contains(e.mails[0], "Two") {
+		t.Errorf("the new item did not go out: %d emails", e.sent())
+	}
+}
+
+// After an update from a version without the file known, the digest knows
+// all feeds that the account follows. So no item that waits for the next
+// digest is lost.
+func TestJobKnowsTheFeedsOfAnOlderDigest(t *testing.T) {
+	e := newEnv(t, false)
+	_, tok, _ := e.account("")
+	e.withMail()
+	a := e.setFeeds(tok, "https://a.org/rss.xml\tAlpha\n")
+	start := time.Unix(1_800_000_000, 0)
+	f := &fakeTools{items: map[string]string{"https://a.org/rss.xml": oneItem}, now: start}
+	e.s.feeds = f.tools()
+	e.s.runFeeds()
+	if err := os.Remove(filepath.Join(e.s.store.feedDir(a.ID), "known")); err != nil && !os.IsNotExist(err) {
+		t.Fatal(err)
+	}
+	f.items["https://a.org/rss.xml"] = "1700003600\tTwo\thttps://a.org/2\t\t\tid2\t\t\t\n" + oneItem
+	f.now = start.Add(25 * time.Hour)
+	e.s.runFeeds()
+	if e.sent() != 1 || !strings.Contains(e.mails[0], "Two") {
+		t.Errorf("the update lost the new item: %d emails", e.sent())
+	}
+	if got := e.feedFile(a, "known"); got != "https://a.org/rss.xml\tAlpha\n" {
+		t.Errorf("known: %q", got)
 	}
 }
 

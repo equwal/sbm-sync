@@ -92,7 +92,9 @@ It uses [sfeed](https://codemadness.org/sfeed.html) on the server:
 - Digest: the server sends you the new items by email once a day, in the
   form of `sfeed_plain`, unless you turn that off in the settings of the
   page. The first day sends nothing, so that you do not get the whole
-  history. A server without an SMTP server sends no digest.
+  history. A feed that you follow later is the same: the digest sends only
+  the items that come after its first fetch. A server without an SMTP
+  server sends no digest.
 
 Read the feed in a terminal with the token of a device (`bm-sync login`
 keeps one in `~/.config/sbm/sync`):
