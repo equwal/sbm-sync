@@ -69,6 +69,39 @@ The pages obey the rules of sync: the email address must be confirmed, and
 with billing on, the account needs its trial or a subscription. The
 download always works, because the bookmarks belong to their owner.
 
+## Feeds
+
+After you sign in, the page **/feed** follows RSS and Atom feeds for you.
+It uses [sfeed](https://codemadness.org/sfeed.html) on the server:
+
+- Follow a feed: type its address and a name. The list is one plain file,
+  `feeds.txt`, with one feed on each line: the URL, a tab and the name.
+- The server fetches the feeds every 30 minutes with `sfeed_update` and
+  shows the items newest first, with the feed, the time and the author. A
+  setting opens the links in a new tab.
+- Explore: turn it on, and the server looks through your bookmarked pages
+  for feeds with `sfeed_web`, 20 pages with each update, and offers what it
+  finds.
+- Digest: turn it on, and the server sends you the new items by email once
+  a day, in the form of `sfeed_plain`. The first day after you turn it on
+  sends nothing, so that you do not get the whole history.
+
+Read the feed in a terminal with the token of a device (`bm-sync login`
+keeps one in `~/.config/sbm/sync`):
+
+    curl -H "Authorization: Bearer $token" https://sbmsync.com/api/feed | sfeed_plain
+    curl -H "Authorization: Bearer $token" https://sbmsync.com/api/feeds
+
+`/api/feed` gives the items of all your feeds in the sfeed format, newest
+first, so `sfeed_plain`, `sfeed_curses`, `sfeed_html` and the other sfeed
+tools read it. `/api/feeds` gives `feeds.txt`.
+
+The feed job fetches only feeds and pages on the public internet: an
+address that points to a private network, or to the server itself, is
+skipped. The job runs as the command `sbm-sync feed`; `contrib/` has a
+systemd service and a timer for it, and `contrib/deploy.sh` installs them
+together with the server.
+
 ## Protocol
 
 Plain HTTP, for any client with curl.
@@ -92,6 +125,11 @@ Plain HTTP, for any client with curl.
                            200: the address of a Stripe Checkout page
     POST /api/portal       Authorization: Bearer <token>
                            200: the address of the Stripe customer portal
+    GET  /api/feed         Authorization: Bearer <token>
+                           200: the items of all feeds, newest first, in
+                           the sfeed(5) format, one item on each line
+    GET  /api/feeds        Authorization: Bearer <token>
+                           200: the feeds, one on each line: URL, tab, name
 
 Errors come as text: 401 (sign in again), 402 (the subscription or the
 trial has ended), 403 (confirm the email address first), 404 (the server
@@ -135,6 +173,12 @@ Then put it behind a web server that does TLS. `contrib/` has a systemd unit,
 an nginx site and a Caddyfile. With Go installed on another computer:
 
     GOOS=linux GOARCH=amd64 CGO_ENABLED=0 go build
+
+For the feeds, install `sfeed` (a Debian package) and run `sbm-sync feed`
+every 30 minutes with the same environment as the server:
+`contrib/sbm-feed.service` and `contrib/sbm-feed.timer` do that with
+systemd. `sh contrib/deploy.sh root@sbm.example.org` builds the server,
+installs it, the timer and sfeed on the server, and restarts the service.
 
 ### Connect the devices
 
@@ -210,6 +254,9 @@ The Chrome Web Store asks for them. To change them, edit the template
                                   customer and subscription state
     data/files/<account>/<sha256> the last 50 versions of each bookmark file
     data/files/<account>/HEAD     name of the current version
+    data/feeds/<account>/         the feeds: feeds.txt, the sfeedrc made
+                                  from it, items/<feed> from sfeed_update,
+                                  explore, and the state of the digest
 
 To back up, copy the directory.
 

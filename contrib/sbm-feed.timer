@@ -1,0 +1,11 @@
+# Runs sbm-feed.service every 30 minutes. See sbm-feed.service.
+[Unit]
+Description=Run the sbm Sync feed job every 30 minutes
+
+[Timer]
+OnCalendar=*:0/30
+RandomizedDelaySec=60
+Persistent=true
+
+[Install]
+WantedBy=timers.target

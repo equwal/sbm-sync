@@ -1,4 +1,5 @@
 data/
 /sbm-sync
 /sbm-sync.exe
+/sbm-sync-linux
 *.env

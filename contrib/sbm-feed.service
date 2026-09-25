@@ -1,0 +1,24 @@
+# The feed job of sbm-sync: it fetches the feeds of every account with
+# sfeed_update, looks through bookmarks for feeds, and sends the daily
+# digests. sbm-feed.timer starts it every 30 minutes. Install:
+#   apt-get install sfeed
+#   install -m 644 contrib/sbm-feed.service contrib/sbm-feed.timer /etc/systemd/system/
+#   systemctl daemon-reload && systemctl enable --now sbm-feed.timer
+[Unit]
+Description=sbm Sync feed job
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=sbm
+Group=sbm
+EnvironmentFile=/etc/sbm-sync.env
+Environment=SBM_DATA=/var/lib/sbm-sync
+ExecStart=/usr/local/bin/sbm-sync feed
+NoNewPrivileges=yes
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+PrivateDevices=yes
+ReadWritePaths=/var/lib/sbm-sync
