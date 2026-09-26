@@ -423,7 +423,8 @@ func (s *server) digest(a Account, dir string, feeds []Feed) error {
 		subject = "sbm feed: 1 new item"
 	}
 	body = strings.TrimRight(body, "\n") + "\n\nYour feed: " + s.site + "/feed\n" +
-		"To stop these emails, turn off the daily digest in the settings of that page.\n"
+		"To stop these emails, turn off the daily digest in the settings of that page.\n\n" +
+		"Also from the author of sbm: SubRead, read along with an audiobook: https://subread.space/\n"
 	if err := s.mail(a.Email, subject, body); err != nil {
 		return err
 	}

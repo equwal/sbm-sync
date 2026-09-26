@@ -567,6 +567,23 @@ func TestHomePrivacy(t *testing.T) {
 	}
 }
 
+// Each page links the other sites and apps of the author, but not sbm Sync
+// itself.
+func TestFooterLinksTheOtherProjects(t *testing.T) {
+	e := newEnv(t, false)
+	for _, path := range []string{"/", "/privacy", "/terms", "/login"} {
+		page := e.body(http.DefaultClient, path)
+		for _, want := range []string{`href="https://subread.space/"`, `href="https://booksimulator.com/"`, `href="https://github.com/equwal/sbm-android/releases/latest"`, `href="https://recentlywritten.com/projects.html"`} {
+			if !strings.Contains(page, want) {
+				t.Errorf("%s lacks %s", path, want)
+			}
+		}
+		if strings.Contains(page, `href="https://sbmsync.com/"`) {
+			t.Errorf("%s links sbm Sync itself", path)
+		}
+	}
+}
+
 // api sends a request with the token of a device, as the add-on does, and
 // gives the status and the body of the answer.
 func (e *harness) api(method, token, path string, form url.Values) (int, string) {

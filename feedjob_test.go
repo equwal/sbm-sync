@@ -169,7 +169,7 @@ func TestJobSendsADailyDigest(t *testing.T) {
 		t.Fatalf("%d emails after a day", e.sent())
 	}
 	mail := e.mails[0]
-	for _, want := range []string{"me@example.org\nsbm feed: 1 new item\n", "Alpha:\n  Two  https://a.org/2\n", "Your feed: " + e.s.site + "/feed\n"} {
+	for _, want := range []string{"me@example.org\nsbm feed: 1 new item\n", "Alpha:\n  Two  https://a.org/2\n", "Your feed: " + e.s.site + "/feed\n", "https://subread.space/\n"} {
 		if !strings.Contains(mail, want) {
 			t.Errorf("the digest lacks %q:\n%s", want, mail)
 		}
