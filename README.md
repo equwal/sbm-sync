@@ -4,7 +4,7 @@ OFFICIAL WEBSITE: [sbmsync.com](https://sbmsync.com)
 
 For years I just used a simple dmenu shell script to do this, but now that we have the AI apocalypse, I put Fable 5.1 MAX at the task of making this for an hour. If you prefer the simple core program, just use my [sbm-suckless](https://github.com/equwal/sbm-suckless/) instead. AI was used there to fix some bugs and port the broken POSIX shell script to the usable C99 language spec.
 
-(the following is the blog post at [recentlywritten.com/sbm-sync.html](https://recentlywritten.com/sbm-sync.html)
+(the following is the blog post at [recentlywritten.com/sbm-sync.html](https://recentlywritten.com/sbm-sync.html))
 
 # sbm Sync
 
